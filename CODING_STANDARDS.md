@@ -15,7 +15,7 @@ Enforced by `ktlint`, `detekt`, Android Lint, and the `:core:dependencyGuard` ta
 | Language level | Kotlin 2.0, `explicitApi` **on** for `core/*` public declarations |
 | Nullability | No `!!`. No platform types in a public API. `lateinit` only for `ViewModel`-scoped Android refs, always null-checked before use |
 | Result handling | Expected failures are `Result<T>` or a sealed `Outcome`. Exceptions are for bugs, not for control flow |
-| Sealed hierarchies | `Action`, `StepState`, `Phase`, `RiskClass`, `PolicyDecision` are sealed interfaces with exhaustive `when` |
+| Sealed hierarchies | `Action` and `Assertion` are sealed interfaces with exhaustive `when`. `Phase`, `StepState`, `RiskClass`, `Verdict`, `ErrorCode` are enums with `@SerialName` on every entry, so the wire form is snake_case and never drifts with a rename |
 | Data classes | `copy()` is not used to change invariants; use an explicit method with a name that says what changed |
 | Extension functions | Only in `core/model` and for pure transformations. An extension that needs a `Context` is a smell |
 | Scope functions | `let`/`run`/`apply`/`also` — at most one per expression, never nested more than two deep |

@@ -191,10 +191,11 @@ CREATE TABLE steps (
   expectation_json TEXT,
   precondition_json TEXT,
   risk_class TEXT NOT NULL,
-  reason TEXT NOT NULL,          -- I9: auditable reason is mandatory
+  reason_source TEXT NOT NULL,     -- I9: the auditable reason is mandatory
+  reason_text TEXT NOT NULL,       -- I9: and it is never blank
   state TEXT NOT NULL,
-  depends_on_json TEXT NOT NULL, -- adjacency list
-  seed INTEGER,                  -- I8: determinism
+  depends_on_json TEXT NOT NULL,   -- adjacency list
+  seed INTEGER,                    -- I8: determinism
   prompt_version TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL

@@ -42,18 +42,24 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the vocabulary every other module speaks, in pure Kotlin.
 
-- [ ] `Goal`, `Plan`, `Step`, `StepState`, `Action`, `Observation`, `Decision`, `Reason`, `Verdict`, `RiskClass`, `Phase`.
-- [ ] `Action` as a sealed interface with the full primitive set from `ARCH.md` §4.1.
-- [ ] `Observation` — app, nodes, overlays, optional screenshot reference, settle metadata.
-- [ ] `RunId` / `StepId` / `ApprovalId` value types with ULID generation and validation.
-- [ ] `LumenClock` interface with a `SystemClock` implementation (JVM + Android).
-- [ ] `ApiError` with the stable codes from `API_SPEC.md` §1.
-- [ ] Serialization annotations on every wire type, with `@SerialName` on every field.
-- [ ] `PlanEquivalence` — the determinism comparator from `ARCH.md` §9.
-- [ ] Unit tests: serialisation round-trips, ULID monotonicity, plan equivalence ignores timestamps.
+- [x] `Goal`, `Plan`, `Step`, `StepState`, `Action`, `Observation`, `Decision`, `Reason`, `Verdict`, `RiskClass`, `Phase`.
+- [x] `Action` as a sealed interface with the full primitive set from `ARCH.md` §4.1.
+- [x] `Observation` — app, nodes, overlays, optional screenshot reference, settle metadata.
+- [x] `RunId` / `StepId` / `ApprovalId` value types with ULID generation and validation.
+- [x] `LumenClock` interface with a `SystemLumenClock` implementation (JVM + Android).
+- [x] `ApiError` with the stable codes from `API_SPEC.md` §1.
+- [x] Serialization annotations on every wire type, with `@SerialName` on every field.
+- [x] `PlanEquivalence` — the determinism comparator from `ARCH.md` §9.
+- [x] Unit tests: serialisation round-trips, ULID monotonicity, plan equivalence ignores timestamps.
 
 **Gate:** `./gradlew :core:model:test` passes.
-**Quota impact:** negligible (no resident state).
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks were run instead: brace balance over all 46 Kotlin files, every `@Serializable` property type verified serialisable, every package-local reference resolved, and the dependency guard re-simulated.
+**Quota impact:** negligible — the model holds no resident state. The tree cache that uses `NodeRef` is budgeted at 192 MiB and belongs to M4.
+
+**Notes for the next milestone:**
+- `core:model` is the only module that may be depended on by every other core module. It must stay free of behaviour and free of Android types.
+- `Action` and `Assertion` are the two sealed hierarchies. Any new primitive goes into `Action` with a `@SerialName`, and the `ActionSerializationTest` list must grow with it.
+- `Reason` refuses blank text at construction. A step without a reason does not compile.
 
 ---
 
