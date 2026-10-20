@@ -88,17 +88,24 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the 2 GB RAM cap and the compute governors, enforced by admission control.
 
-- [ ] `QuotaWatchdog` — the tick loop, the category reservations, the eviction ladder from `ARCH.md` §7.1.
-- [ ] `RamBudget` — reserve / release / report, exact MiB accounting.
-- [ ] `ThermalGovernor` — reads thermal status, drives worker count and inference suspension.
-- [ ] `BatteryGovernor` — suspends autonomous runs below 20 % when not charging.
-- [ ] `WorkerPool` — a `Semaphore(4)` with a reported depth and a denied-request error.
-- [ ] `MemoryProbe` — the platform interface that reads PSS/RSS; a fake for tests.
-- [ ] Tests: the full `Q-RAM-*`, `Q-THM-*` sets, including the concurrent over-commit case.
-- [ ] Tool: `tools/quota-probe` — per-category RAM report.
+- [x] `QuotaWatchdog` — the tick loop, the category reservations, the eviction ladder from `ARCH.md` §7.1.
+- [x] `RamBudget` — reserve / release / report, exact MiB accounting.
+- [x] `ThermalGovernor` — reads thermal status, drives worker count and inference suspension.
+- [x] `BatteryGovernor` — suspends autonomous runs below 20 % when not charging.
+- [x] `WorkerPool` — a `Semaphore(4)` with a reported depth and a denied-request error.
+- [x] `MemoryProbe` — the platform interface that reads PSS/RSS; a fake for tests.
+- [x] Tests: the full `Q-RAM-*`, `Q-THM-*` sets, including the concurrent over-commit case.
+- [x] Tool: `tools/quota-probe` — per-category RAM report.
 
 **Gate:** `./gradlew :core:quota:quotaTest` passes.
-**Quota impact:** the watchdog itself ≈ 4–8 MiB resident; it samples every 2 s.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 55 Kotlin files, and every scenario in the suites was traced by hand against the watchdog's arithmetic.
+**Quota impact:** the watchdog itself holds a budget, a map of evictables and a last-tick record — a few KiB, inside the 64 MiB `BASELINE` budget.
+
+**Notes for the next milestone:**
+- `RamBudget` is the only way to obtain memory. A component that allocates outside it is a defect, and the `dependencyGuard`-style check for that is a lint rule to add when the first real consumer lands.
+- The watchdog reports the pressure it *found*, not the pressure it left behind: a tick is an alarm record.
+- The cap is a hard boundary. Reaching 2 GB stops the run even if the eviction that followed brought the measurement back under the cap.
+- `WorkerPool` **refuses** a fifth worker rather than queueing it. A queued request would silently blow the wall-clock budget.
 
 ---
 
