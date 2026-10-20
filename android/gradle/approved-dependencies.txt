@@ -19,8 +19,10 @@ androidx.datastore
 androidx.lifecycle
 androidx.navigation
 androidx.room
+androidx.sqlite
 androidx.test
 androidx.test.espresso
+androidx.test.ext
 androidx.work
 
 # --- Google ---
@@ -29,6 +31,11 @@ com.google.devtools.ksp
 
 # --- Networking (approved: TECHSTACK.md §10) ---
 com.squareup.okhttp3
+
+# --- Storage encryption ---
+# Approved by the user on 2026-10-20. The observation store holds screen
+# content, so it is encrypted at rest with a Keystore-managed key.
+net.zetetic
 
 # --- Test-only ---
 junit

@@ -61,10 +61,17 @@ subprojects {
 
 data class DeclaredDependency(
     val module: String,
+    val configuration: String,
     val group: String,
     val artifact: String,
     val coordinate: String,
-)
+) {
+    /** Whether the dependency only reaches a test source set. */
+    val isTestOnly: Boolean
+        get() = configuration.startsWith("test") ||
+            configuration.startsWith("androidTest") ||
+            configuration == "kspTest"
+}
 
 /**
  * Resolves the declared dependencies of the whole project.
@@ -73,6 +80,10 @@ data class DeclaredDependency(
  * the build files, so the scan is: catalog alias -> accessor (`libs.kotlin.stdlib`)
  * -> the build files that use that accessor. Inline coordinates
  * (`implementation("group:artifact")`) are picked up too.
+ *
+ * The configuration each dependency was declared in is tracked, because the
+ * module boundary is a rule about production code: a test dependency on
+ * androidx does not put androidx on a shipped classpath.
  */
 fun resolveDeclaredDependencies(projectDir: File): List<DeclaredDependency> {
     val catalogFile = File(projectDir, "gradle/libs.versions.toml")
@@ -84,9 +95,9 @@ fun resolveDeclaredDependencies(projectDir: File): List<DeclaredDependency> {
             accessor to (match.groupValues[2] to match.groupValues[3])
         }
 
+    val configurationRegex = Regex("""^\s*([A-Za-z][A-Za-z0-9]*)\s*\(""")
     val accessorRegex = Regex("""\blibs\.([A-Za-z0-9_.]+)""")
     val inlineRegex = Regex("""["']([A-Za-z0-9_.]+):([A-Za-z0-9_.-]+)(?::[A-Za-z0-9_.-]+)?["']""")
-    val blockCommentRegex = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
     val lineCommentRegex = Regex("""//[^\n]*""")
 
     val declared = mutableListOf<DeclaredDependency>()
@@ -94,25 +105,63 @@ fun resolveDeclaredDependencies(projectDir: File): List<DeclaredDependency> {
         .filter { it.isFile && it.name == "build.gradle.kts" }
         .forEach { file ->
             val module = file.parentFile.relativeTo(projectDir).path.replace(File.separatorChar, '/')
-            // Comments are stripped so that prose in a KDoc cannot be read as a
-            // dependency declaration.
-            val text = lineCommentRegex.replace(blockCommentRegex.replace(file.readText(), " "), " ")
+            var configuration = "implementation"
+            var insideBlockComment = false
 
-            accessorRegex.findAll(text).forEach { match ->
-                val accessor = "libs." + match.groupValues[1]
-                val coordinate = accessorToCoordinate[accessor] ?: return@forEach
-                declared += DeclaredDependency(module, coordinate.first, coordinate.second, "${coordinate.first}:${coordinate.second}")
-            }
+            file.readLines().forEach { rawLine ->
+                // Comments are stripped so that prose in a KDoc cannot be read
+                // as a dependency declaration. A block comment may span
+                // several lines, so the state is carried across them.
+                var line = rawLine
+                if (insideBlockComment) {
+                    val end = line.indexOf("*/")
+                    if (end < 0) return@forEach
+                    line = line.substring(end + 2)
+                    insideBlockComment = false
+                }
+                val start = line.indexOf("/*")
+                if (start >= 0) {
+                    val end = line.indexOf("*/", start + 2)
+                    if (end < 0) {
+                        line = line.substring(0, start)
+                        insideBlockComment = true
+                    } else {
+                        line = line.substring(0, start) + " " + line.substring(end + 2)
+                    }
+                }
+                line = lineCommentRegex.replace(line, " ")
 
-            inlineRegex.findAll(text).forEach { match ->
-                val group = match.groupValues[1]
-                val artifact = match.groupValues[2]
-                // Skip plugin ids and version-catalog style strings.
-                if (group.startsWith("com.android.tools.build")) return@forEach
-                declared += DeclaredDependency(module, group, artifact, "$group:$artifact")
+                configurationRegex.find(line)?.let { match ->
+                    configuration = match.groupValues[1]
+                }
+
+                accessorRegex.findAll(line).forEach { match ->
+                    val accessor = "libs." + match.groupValues[1]
+                    val coordinate = accessorToCoordinate[accessor] ?: return@forEach
+                    declared += DeclaredDependency(
+                        module = module,
+                        configuration = configuration,
+                        group = coordinate.first,
+                        artifact = coordinate.second,
+                        coordinate = "${coordinate.first}:${coordinate.second}",
+                    )
+                }
+
+                inlineRegex.findAll(line).forEach { match ->
+                    val group = match.groupValues[1]
+                    val artifact = match.groupValues[2]
+                    if (group.startsWith("com.android.tools.build")) return@forEach
+                    declared += DeclaredDependency(
+                        module = module,
+                        configuration = configuration,
+                        group = group,
+                        artifact = artifact,
+                        coordinate = "$group:$artifact",
+                    )
+                }
             }
         }
-    return declared.distinctBy { it.module + "|" + it.coordinate }
+    return declared.distinctBy { it.module + "|" + it.coordinate + "|" + it.configuration }
 }
 
 val dependencyGuard by tasks.registering {
@@ -138,9 +187,12 @@ val dependencyGuard by tasks.registering {
 
         // 1. core module boundary.
         //    ADR 0002: `:core:store` is the single exception, because Room is
-        //    an Android library. It may depend on Room and DataStore only.
-        val coreStoreException = setOf("androidx.room", "androidx.datastore")
-        declared.filter { it.module.startsWith("core/") }
+        //    an Android library. It may depend on Room, DataStore and the
+        //    SQLite support layer, and nothing else.
+        //    The rule is about production code: a test dependency does not put
+        //    a library on a shipped classpath.
+        val coreStoreException = setOf("androidx.room", "androidx.datastore", "androidx.sqlite")
+        declared.filter { it.module.startsWith("core/") && !it.isTestOnly }
             .forEach { dep ->
                 val banned = dep.group.startsWith("androidx.") ||
                     dep.group.startsWith("com.android.") ||
@@ -150,7 +202,7 @@ val dependencyGuard by tasks.registering {
                     val isStore = dep.module.startsWith("core/store")
                     val isAllowedException = isStore && coreStoreException.any { dep.group == it }
                     if (!isAllowedException) {
-                        violations += "core boundary: ${dep.module} declares '${dep.coordinate}' — core/* must be pure Kotlin/JVM (ADR 0002 exempts :core:store for androidx.room and androidx.datastore only)"
+                        violations += "core boundary: ${dep.module} declares '${dep.coordinate}' in '${dep.configuration}' — core/* must be pure Kotlin/JVM (ADR 0002 exempts :core:store for androidx.room, androidx.datastore and androidx.sqlite only)"
                     }
                 }
             }

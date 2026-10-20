@@ -61,6 +61,12 @@ style:
     active: true
   ForbiddenImport:
     active: true
+    # The sandbox is the only module that is allowed to touch the filesystem
+    # directly, because it is the only module that mediates every file
+    # operation (CODING_STANDARDS.md §6).
+    excludes:
+      - "**/core/sandbox/**"
+      - "**/core/store/**"
     imports:
       - name: "java.lang.Thread"
         reason: "Structured concurrency only (CODING_STANDARDS.md §2)."

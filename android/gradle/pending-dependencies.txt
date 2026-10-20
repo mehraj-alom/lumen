@@ -7,7 +7,8 @@
 # only after the user approves it, and record the approval in TECHSTACK.md §10.
 
 # SQLCipher — encrypted observation store (native dependency, Keystore key surface).
-# net.zetetic
+# Approved by the user on 2026-10-20. Removed from this list; the group is now
+# in approved-dependencies.txt and the ledger in TECHSTACK.md §10.1.
 
 # llama.cpp — on-device inference via JNI (native dependency, NDK build).
 # The task is M14 and is blocked until this line is removed by the user.

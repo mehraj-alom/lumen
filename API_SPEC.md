@@ -407,22 +407,48 @@ Every file operation is expressed as a `SandboxPath`:
 
 ```kotlin
 @JvmInline
-value class SandboxPath private constructor(val relative: String) {
-    companion object {
-        fun of(relative: String): SandboxPath   // throws SandboxViolation
+public value class SandboxPath(public val relative: String) {
+    init {
+        Companion.validate(relative)
+    }
+
+    public companion object {
+        public fun of(relative: String): SandboxPath
+        public fun validate(relative: String)
     }
 }
 ```
 
+The validation runs in the constructor, so **every** path is checked — there is
+no way to construct one that was not validated, including by deserialisation.
+The checks that need a filesystem (canonicalisation and symlink escape) are
+performed by `SandboxRoot.resolve`, which knows where the root is.
+
+| Rejected | Example |
+|---|---|
+| Parent traversal as a segment | `../etc/passwd`, `frames/../../etc/passwd` |
+| Absolute paths | `/etc/passwd` |
+| Home-relative paths | `~/secrets` |
+| Control characters, including NUL | `frames/a b.jpg` |
+| Foreign filesystems | `proc/self/mem`, `sdcard/DCIM/x.jpg` |
+| Windows drive prefixes and UNC paths | `C:/Windows`, `\\server\share` |
+| A symlink that resolves outside the root | `frames/link.txt` → `/etc/passwd` |
+
 ```json
 {
   "code": "sandbox_violation",
-  "message": "Path escapes the sandbox root",
+  "message": "the path resolves outside the sandbox root",
   "detail": { "requested": "../../etc/passwd", "root": "/data/user/0/dev.lumen.agent/files/sandbox" }
 }
 ```
 
-Rejected forms: absolute paths, `..` traversal, symlinks that resolve outside the root, paths containing NUL, paths on other filesystems (`/proc`, `/sys`, `/data/data/other.app`), and Windows-style drive prefixes (defence in depth).
+**Storage buckets** and their budgets (`AGENTS.md` §2): `models/` 4,000 MiB,
+`frames/` 6,000 MiB, `traces/` 3,000 MiB, `state/` 2,000 MiB, `workspace/`
+4,000 MiB, 1,000 MiB of headroom. The first segment of a path names the
+bucket. A write that would push a bucket past its budget evicts the
+least-recently-used files in that bucket until it fits; the `workspace/`
+bucket is **never** swept, so a full workspace refuses the write rather than
+deleting the user's files.
 
 ---
 

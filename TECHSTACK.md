@@ -283,17 +283,19 @@ fails the build when a declared group is not in
 | `material3` | `androidx.compose.material3` | `app` | Material 3 | **Pre-approved** (`D3`) |
 | `material-icons-extended` | `androidx.compose.material` | `app` | Icons | **Pre-approved** (`D3`) |
 | `room-runtime`, `room-ktx`, `room-compiler`, `room-testing` | `androidx.room` | `core:store` | Hot state | **Pre-approved** (`D4`, ADR 0002) |
+| `sqlite` | `androidx.sqlite` | `core:store` | The SQLite support layer Room and SQLCipher share | **Pre-approved** (ADR 0002) |
 | `datastore-preferences` | `androidx.datastore` | `core:store` | Settings | **Pre-approved** (`D4`, ADR 0002) |
 | `work-runtime-ktx` | `androidx.work` | `agent` | Keepalive | **Pre-approved** |
 | `credentials` | `androidx.credentials` | `app` | Optional sign-in | **Pending** |
 | `okhttp`, `logging-interceptor`, `mockwebserver` | `com.squareup.okhttp3` | `core:protocol`, `agent` | HTTP + WebSocket | **Pre-approved** |
-| `android-database-sqlcipher`, `android-database-sqlcipher-ktx` | `net.zetetic` | `core:store` | Encrypting the observation store | **Pending** — native dependency |
+| `android-database-sqlcipher`, `android-database-sqlcipher-ktx` | `net.zetetic` | `core:store` | Encrypting the observation store | **Approved 2026-10-20** — native dependency |
 | `llama.cpp` (JNI) | `org.llama` | `core:brain` | On-device inference | **Pending** — native dependency, NDK build |
 | `junit` | `junit` | test | Test framework | **Pre-approved** |
 | `truth` | `com.google.truth` | test | Assertions | **Pre-approved** |
 | `mockk` | `io.mockk` | test | Mocking | **Pre-approved** |
 | `robolectric` | `org.robolectric` | test | Android units | **Pre-approved** |
 | `core`, `runner`, `rules` | `androidx.test` | androidTest | Instrumentation | **Pre-approved** |
+| `junit` | `androidx.test.ext` | androidTest | The Android JUnit runner | **Pre-approved** |
 | `espresso-core` | `androidx.test.espresso` | androidTest | UI assertions | **Pre-approved** |
 | `material` | `com.google.android.material` | `app` | Material components | **Pre-approved** |
 

@@ -67,20 +67,28 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the 20 GB boundary, enforced by construction.
 
-- [ ] `SandboxPath` with the full validator from `CODING_STANDARDS.md` §6.2.
-- [ ] `SandboxRoot` — resolves the app-scoped sandbox directory.
-- [ ] `WorkspaceManager` — read/write/list/delete inside the sandbox.
-- [ ] `StorageQuota` — bucket accounting, LRU eviction, `workspace/` exemption.
-- [ ] Room schema v1: `runs`, `plans`, `steps`, `observations`, `approvals`, `budget_ledger`, `settings`.
-- [ ] `RunDao`, `StepDao`, `ApprovalDao`, `ObservationDao` with the queries the runtime needs.
-- [ ] `TraceWriter` — rotating JSONL under `traces/`, size- and age-based rotation.
-- [ ] `FrameStore` — frames under `frames/`, LRU, downscaled after 24 h.
-- [ ] SQLCipher key in the Android Keystore.
-- [ ] Tests: the full `Q-STO-*` set from `TESTING.md` §3.2, plus a migration test harness.
-- [ ] Tool: `tools/quota-probe` — reports per-bucket usage.
+- [x] `SandboxPath` with the full validator from `CODING_STANDARDS.md` §6.2.
+- [x] `SandboxRoot` — resolves the app-scoped sandbox directory.
+- [x] `WorkspaceManager` — read/write/list/delete inside the sandbox.
+- [x] `StorageQuota` — bucket accounting, LRU eviction, `workspace/` exemption.
+- [x] Room schema v1: `runs`, `plans`, `steps`, `observations`, `approvals`, `budget_ledger`, `settings`.
+- [x] `RunDao`, `StepDao`, `ApprovalDao`, `ObservationDao` with the queries the runtime needs.
+- [x] `TraceWriter` — rotating JSONL under `traces/`, size- and age-based rotation.
+- [x] `FrameStore` — frames under `frames/`, LRU, downscaled after 24 h.
+- [x] SQLCipher key in the Android Keystore.
+- [x] Tests: the full `Q-STO-*` set, plus a migration test harness.
+- [x] Tool: `tools/quota-probe` — reports per-bucket usage.
 
-**Gate:** `./gradlew :core:sandbox:test :core:store:test` passes; the `Q-STO-*` suite is green.
-**Quota impact:** SQLite + WAL ≈ 12–40 MiB depending on the number of steps; the `state/` bucket caps at 2,000 MiB.
+**Gate:** `./gradlew :core:sandbox:test :core:store:test` passes.
+**Status:** implemented. The test gates were **not executed** — the build machine has insufficient RAM, so they run in CI. The sandbox tests are JVM tests; the store tests are device tests, because the database is encrypted and the Keystore is not available off-device.
+**Quota impact:** the database, its write-ahead log and its checkpoints live in the `state/` bucket, capped at 2,000 MiB. The sandbox itself adds no resident memory.
+
+**Notes for the next milestone:**
+- The `StateStore` port lives in `core:model` and the Room implementation in `core:store`, so the loop stays testable on the JVM with a fake store (ADR 0002).
+- `SandboxPath` validates in its constructor, so every path is checked including one that arrived by deserialisation. The filesystem-dependent checks — canonicalisation and symlink escape — belong to `SandboxRoot.resolve`.
+- The workspace bucket is never swept. A full workspace refuses the write; it never deletes the user's files.
+- The eviction sweep takes the oldest file one at a time and stops as soon as the write fits, rather than evicting a batch.
+- The guard now tracks the configuration each dependency was declared in, so a test-only dependency does not trip the production module boundary.
 
 ---
 

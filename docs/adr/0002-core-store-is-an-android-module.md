@@ -45,7 +45,15 @@ The boundary is preserved where it matters:
 
 The `dependencyGuard` rule is narrowed accordingly: `core/*` modules other
 than `core:store` may not declare an `androidx.*` dependency at all, and
-`core:store` is allowed exactly `androidx.room` and `androidx.datastore`.
+`core:store` is allowed exactly `androidx.room`, `androidx.datastore` and
+`androidx.sqlite` — the last because SQLCipher's `SupportFactory` and Room
+both sit on the `androidx.sqlite` support layer, and depending on it
+transitively while importing it directly would be worse than declaring it.
+
+The rule applies to **production** configurations only. A test dependency on
+`androidx.test` does not put a library on a shipped classpath, so the guard
+tracks the configuration each dependency was declared in and exempts the test
+source sets.
 
 ## Alternatives considered
 
