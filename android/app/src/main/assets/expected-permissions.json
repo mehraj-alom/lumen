@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "The expected permission set of the merged manifest.",
+    "Asserted by the `permissionSet` instrumentation test (TESTING.md §6, G-06).",
+    "Adding a permission here is the act of approval — it must be a deliberate",
+    "edit in the same commit that adds the permission to a manifest, and it",
+    "requires explicit user approval (AGENTS.md §6.1)."
+  ],
+  "expected": [
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.BIND_ACCESSIBILITY_SERVICE",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.INTERNET",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "android.permission.WAKE_LOCK"
+  ]
+}

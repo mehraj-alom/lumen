@@ -1,0 +1,14 @@
+# Dependencies that are BLOCKED until the user explicitly approves them.
+#
+# A declared dependency whose group matches a line here fails
+# `:core:dependencyGuard` with "pending approval".
+#
+# See TASK.md Appendix — the dependency approval queue. Remove a line here
+# only after the user approves it, and record the approval in TECHSTACK.md §10.
+
+# SQLCipher — encrypted observation store (native dependency, Keystore key surface).
+# net.zetetic
+
+# llama.cpp — on-device inference via JNI (native dependency, NDK build).
+# The task is M14 and is blocked until this line is removed by the user.
+# org.llama

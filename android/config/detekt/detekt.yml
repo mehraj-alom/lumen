@@ -1,0 +1,129 @@
+# LUMEN — detekt configuration.
+# Rules mirror CODING_STANDARDS.md §10. The defaults are built upon; only the
+# deviations are listed here.
+
+build:
+  maxIssues: 0
+
+complexity:
+  ComplexMethod:
+    active: true
+    threshold: 12
+  LongMethod:
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 7
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 30
+    thresholdInClasses: 30
+    thresholdInObjects: 30
+    thresholdInEnums: 20
+    ignoreDeprecated: true
+    ignorePrivate: false
+    ignoreOverridden: true
+
+naming:
+  FunctionNaming:
+    active: true
+    functionPattern: "[a-z][a-zA-Z0-9]*"
+    excludeClassPattern: ".*Test$|.*Spec$"
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: "[A-Z][_A-Z0-9]*"
+    propertyPattern: "[A-Za-z][_A-Za-z0-9]*"
+    privatePropertyPattern: "(_)?[A-Za-z][_A-Za-z0-9]*"
+
+style:
+  MagicNumber:
+    active: true
+    ignoreNumbers: "-1,0,1,2,100"
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: false
+    ignoreConstantDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+    ignoreEnums: false
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
+    excludeCommentStatements: true
+  ReturnCount:
+    active: true
+    max: 3
+    excludeGuardClauses: true
+  WildcardImport:
+    active: true
+  ForbiddenImport:
+    active: true
+    imports:
+      - name: "java.lang.Thread"
+        reason: "Structured concurrency only (CODING_STANDARDS.md §2)."
+      - name: "kotlinx.coroutines.GlobalScope"
+        reason: "Every scope has a named owner (CODING_STANDARDS.md §2)."
+      - name: "kotlinx.coroutines.Dispatchers.Main"
+        reason: "core/* must not touch the main thread; inject a dispatcher."
+      - name: "java.io.File"
+        reason: "All file I/O goes through SandboxPath (CODING_STANDARDS.md §6)."
+      - name: "java.io.FileInputStream"
+        reason: "All file I/O goes through SandboxPath (CODING_STANDARDS.md §6)."
+      - name: "java.io.FileOutputStream"
+        reason: "All file I/O goes through SandboxPath (CODING_STANDARDS.md §6)."
+      - name: "kotlin.io.path.*"
+        reason: "All file I/O goes through SandboxPath (CODING_STANDARDS.md §6)."
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - name: "println"
+        reason: "Use the structured logger (AGENTS.md §6.2)."
+      - name: "print"
+        reason: "Use the structured logger (AGENTS.md §6.2)."
+      - name: "java.lang.Thread"
+        reason: "Structured concurrency only (CODING_STANDARDS.md §2)."
+      - name: "java.lang.Thread.start"
+        reason: "Structured concurrency only (CODING_STANDARDS.md §2)."
+      - name: "java.io.File.<init>"
+        reason: "All file I/O goes through SandboxPath (CODING_STANDARDS.md §6)."
+      - name: "kotlinx.coroutines.runBlocking"
+        reason: "Bridge with suspend functions instead (CODING_STANDARDS.md §2)."
+      - name: "android.os.Process.setThreadPriority"
+        reason: "Nice the process, never the thread priority."
+
+comments:
+  ForbiddenComment:
+    active: true
+    values:
+      - "FIXME:"
+      - "STOPSHIP:"
+      - "TODO:"
+    allowedPatterns: "TASK\\.md:M[0-9]+"
+    comments:
+      - reason: "A TODO must name the TASK.md milestone that owns it."
+        value: "TODO:"
+      - reason: "A TODO must name the TASK.md milestone that owns it."
+        value: "FIXME:"
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - "InterruptedException"
+      - "CancellationException"
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true
+  LateinitUsage:
+    active: true
+    excludeAnnotatedProperties: "org.junit.Test"
+
+performance:
+  SpreadOperator:
+    active: false

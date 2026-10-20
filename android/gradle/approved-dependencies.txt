@@ -1,0 +1,37 @@
+# Approved third-party dependency groups.
+#
+# A dependency whose group is not listed here fails `:core:dependencyGuard`.
+# Adding a line here is equivalent to adding a dependency to the project —
+# it requires explicit user approval first (AGENTS.md §4, TASK.md Appendix).
+#
+# Format: one group or group-prefix per line. "#" starts a comment.
+
+# --- Kotlin ecosystem ---
+org.jetbrains.kotlin
+org.jetbrains.kotlinx
+
+# --- AndroidX (approved by the locked decisions D3 and D4) ---
+androidx.activity
+androidx.appcompat
+androidx.compose
+androidx.core
+androidx.datastore
+androidx.lifecycle
+androidx.navigation
+androidx.room
+androidx.test
+androidx.test.espresso
+androidx.work
+
+# --- Google ---
+com.google.android.material
+com.google.devtools.ksp
+
+# --- Networking (approved: TECHSTACK.md §10) ---
+com.squareup.okhttp3
+
+# --- Test-only ---
+junit
+com.google.truth
+io.mockk
+org.robolectric

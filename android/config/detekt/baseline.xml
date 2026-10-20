@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<!--
+    Detekt baseline. Empty by design: the M0 gate requires a clean detekt run.
+    Entries are only added with a linked issue id and an expiry date.
+-->
+<SmellBaseline>
+    <ManuallySuppressedIssues/>
+    <CurrentIssues/>
+</SmellBaseline>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose owns the theming; this exists so the window has sane defaults
+         before the first frame. Tokens live in STYLE_GUIDE.md §2. -->
+    <style name="Theme.Lumen" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/void</item>
+    </style>
+</resources>

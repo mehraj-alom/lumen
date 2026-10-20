@@ -1,0 +1,40 @@
+# --- Android / Gradle ---
+android/.gradle/
+android/build/
+android/*/build/
+android/*/*/build/
+android/local.properties
+android/.kotlin/
+android/.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# --- IDE ---
+.idea/
+*.iml
+.kotlin/
+
+# --- Node / web console ---
+android/console-web/node_modules/
+android/console-web/dist/
+android/console-web/.vite/
+npm-debug.log*
+yarn-error.log*
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Local analysis scratch (never committed) ---
+.rea-work/
+*.log
+
+# --- The reference APK is not part of the repository ---
+# The clean-room rule (AGENTS.md §5) is that RE_ANALYSIS.md is the only
+# permitted source of design input. The artifact itself stays out of git.
+*.apk
+*.aab
+*.xapk
+reference/
