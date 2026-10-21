@@ -3,9 +3,6 @@ package dev.lumen.core.brain
 import dev.lumen.core.model.ApiError
 import dev.lumen.core.model.BrainPin
 import dev.lumen.core.model.ErrorCode
-import dev.lumen.core.model.Goal
-import dev.lumen.core.model.Observation
-import dev.lumen.core.model.Step
 
 /**
  * Whether a local model can serve a request.

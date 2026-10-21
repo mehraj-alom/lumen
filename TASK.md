@@ -252,18 +252,29 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the Planner–Actor–Critic, running end to end against fakes.
 
-- [ ] `AgentRuntime` — the loop, the step lifecycle, the budget ledger.
-- [ ] `Planner` — goal → step DAG, plan versioning, re-planning.
-- [ ] `Actor` — dispatch + observe, atomic, single-threaded.
-- [ ] `Critic` — evaluates the expectation against the observation, emits a verdict.
-- [ ] `RunController` — start, pause, resume, abort, checkpoint.
-- [ ] `AbortSignal` — checked before every dispatch (I12).
-- [ ] `ScriptedScenario` DSL and the `HundredStepScenario`.
-- [ ] Tests: the full `L-100-*` and `L-REC-*` sets, plus the property tests.
-- [ ] Determinism: the same seed and the same screen sequence produce an identical plan.
+- [x] `AgentRuntime` — the loop, the step lifecycle, the budget ledger.
+- [x] `Planner` — goal → step DAG, plan versioning, re-planning.
+- [x] `Actor` — dispatch + observe, atomic, single-threaded.
+- [x] `Critic` — evaluates the expectation against the observation, emits a verdict.
+- [x] `RunController` — start, pause, resume, abort, checkpoint.
+- [x] `AbortSignal` — checked before every dispatch (I12).
+- [x] `ScriptedScenario` DSL and the `HundredStepScenario`.
+- [x] Tests: the full `L-100-*` and `L-REC-*` sets, plus the property tests.
+- [x] Determinism: the same seed and the same screen sequence produce an identical plan.
 
 **Gate:** `./gradlew :core:agent:loopRecoveryTest` passes.
-**Quota impact:** the loop's working set is budgeted at ≤ 96 MiB and is compacted to disk under pressure.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 99 Kotlin files, every internal import resolved, every package matching its directory, every `@Serializable` property type resolvable, and no unused imports.
+**Quota impact:** the loop's working set is budgeted at 96 MiB and is compacted to disk under pressure. A hundred-step run holds one plan, one step and one observation at a time.
+
+**Notes for the next milestone:**
+- The plan is updated **in memory** as well as in the store. A step that ran and was not marked would be picked again, and the run would never advance. That was the first bug in this milestone.
+- One action is in flight at a time, and each action is followed by its observation. An agent that acts faster than it can see acts on a stale screen.
+- The approval is staged durably before the wait starts, and the decision is read back from the store, because the decision may arrive from another process.
+- `InMemoryStateStore` moved to `:core:model`'s test fixtures so that the policy, the brain and the loop all share one fake.
+
+**Spec corrections made with the code:**
+- `ARCH.md` §3.1 now names the in-memory plan update as a loop invariant.
+- `TASK.md` M9 was split in the implementation: the loop and the hundred-step scenario are separate test files, so a failure in one does not hide the other.
 
 ---
 

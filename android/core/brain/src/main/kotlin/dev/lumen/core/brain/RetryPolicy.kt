@@ -2,7 +2,6 @@ package dev.lumen.core.brain
 
 import kotlinx.coroutines.delay
 import kotlin.math.min
-import kotlin.math.pow
 
 /**
  * The one retry implementation.

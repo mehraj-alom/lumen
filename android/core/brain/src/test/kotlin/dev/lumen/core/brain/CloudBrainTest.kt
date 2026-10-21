@@ -6,7 +6,6 @@ import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RunId
 import dev.lumen.core.protocol.ContentEgressGuard
-import dev.lumen.core.protocol.EgressContent
 import dev.lumen.core.protocol.EgressDenied
 import kotlinx.coroutines.test.runTest
 import org.junit.Test

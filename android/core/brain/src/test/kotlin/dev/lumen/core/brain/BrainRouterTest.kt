@@ -2,7 +2,6 @@ package dev.lumen.core.brain
 
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.brain.fixtures.FakeBrain
-import dev.lumen.core.model.ApiError
 import dev.lumen.core.model.BrainPin
 import dev.lumen.core.model.ErrorCode
 import dev.lumen.core.model.Goal

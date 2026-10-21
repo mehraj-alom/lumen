@@ -6,7 +6,6 @@ import dev.lumen.core.sandbox.SandboxPath
 import dev.lumen.core.sandbox.WorkspaceManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.io.IOException
 
 /** One line of an execution trace. */
 @Serializable

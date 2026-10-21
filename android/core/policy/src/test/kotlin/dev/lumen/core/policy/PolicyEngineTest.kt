@@ -1,14 +1,12 @@
 package dev.lumen.core.policy
 
 import com.google.common.truth.Truth.assertThat
-import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.ActionPreview
+import dev.lumen.core.model.fixtures.InMemoryStateStore
 import dev.lumen.core.model.ApprovalId
-import dev.lumen.core.model.ApprovalRecord
 import dev.lumen.core.model.ApprovalRequest
 import dev.lumen.core.model.ApprovalState
-import dev.lumen.core.model.LumenClock
 import dev.lumen.core.model.ManualClock
 import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.Observation
@@ -16,7 +14,6 @@ import dev.lumen.core.model.RelativeRect
 import dev.lumen.core.model.RelativePoint
 import dev.lumen.core.model.RiskClass
 import dev.lumen.core.model.RunId
-import dev.lumen.core.model.StateStore
 import dev.lumen.core.model.StepId
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -285,59 +282,17 @@ class PolicyEngineTest {
     }
 }
 
-/** An in-memory store, so the broker can be tested without a database. */
-private class FakeStateStore : StateStore {
-    val approvals = mutableMapOf<ApprovalId, ApprovalRecord>()
-
-    override suspend fun savePlan(plan: dev.lumen.core.model.Plan) = Unit
-
-    override suspend fun loadPlan(runId: RunId): dev.lumen.core.model.Plan? = null
-
-    override suspend fun loadPlanHistory(runId: RunId): List<dev.lumen.core.model.Plan> = emptyList()
-
-    override suspend fun saveStep(runId: RunId, step: dev.lumen.core.model.Step) = Unit
-
-    override suspend fun loadSteps(runId: RunId, planVersion: Int): List<dev.lumen.core.model.Step> = emptyList()
-
-    override suspend fun loadStep(stepId: StepId): dev.lumen.core.model.Step? = null
-
-    override suspend fun appendObservation(
-        runId: RunId,
-        stepId: StepId,
-        observation: Observation,
-    ) = Unit
-
-    override suspend fun loadObservations(runId: RunId): List<Observation> = emptyList()
-
-    override suspend fun saveApproval(approval: ApprovalRecord) {
-        approvals[approval.id] = approval
-    }
-
-    override suspend fun loadApproval(approvalId: ApprovalId): ApprovalRecord? = approvals[approvalId]
-
-    override suspend fun loadPendingApprovals(runId: RunId): List<ApprovalRecord> =
-        approvals.values.filter { it.runId == runId && it.state == ApprovalState.PENDING }
-
-    override suspend fun appendBudgetEntry(entry: dev.lumen.core.model.BudgetEntry) = Unit
-
-    override suspend fun loadBudgetLedger(runId: RunId): List<dev.lumen.core.model.BudgetEntry> = emptyList()
-
-    override suspend fun loadSetting(key: String): String? = null
-
-    override suspend fun saveSetting(key: String, value: String) = Unit
-}
-
 class ApprovalBrokerTest {
 
     private val runId = RunId("01JBX0000000000000000000001")
     private val stepId = StepId("01JBX0000000000000000000002")
-    private lateinit var store: FakeStateStore
+    private lateinit var store: InMemoryStateStore
     private lateinit var clock: ManualClock
     private lateinit var broker: ApprovalBroker
 
     @Before
     fun setUp() {
-        store = FakeStateStore()
+        store = InMemoryStateStore()
         clock = ManualClock(1_000L)
         broker = ApprovalBroker(store, clock, leaseMs = 60_000L)
     }

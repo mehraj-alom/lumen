@@ -1,7 +1,5 @@
 package dev.lumen.core.store
 
-import dev.lumen.core.model.Action
-import dev.lumen.core.model.ActionPreview
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalRecord
 import dev.lumen.core.model.ApprovalState

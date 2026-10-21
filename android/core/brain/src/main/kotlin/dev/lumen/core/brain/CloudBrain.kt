@@ -1,7 +1,5 @@
 package dev.lumen.core.brain
 
-import dev.lumen.core.model.ApiError
-import dev.lumen.core.model.ErrorCode
 import dev.lumen.core.model.Goal
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RiskClass
@@ -19,7 +17,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /** An HTTP response, reduced to what the brain needs. */
 public data class HttpResponse(val code: Int, val body: String)

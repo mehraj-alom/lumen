@@ -1,4 +1,5 @@
 plugins {
+    `java-test-fixtures`
     alias(libs.plugins.kotlin.jvm)
 }
 
@@ -12,11 +13,9 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.serialization.json)
     implementation(project(":core:model"))
-    implementation(project(":core:action"))
     implementation(project(":core:grounding"))
+    implementation(project(":core:action"))
     implementation(project(":core:policy"))
-    implementation(project(":core:quota"))
-    implementation(project(":core:sandbox"))
     implementation(project(":core:brain"))
     implementation(project(":core:protocol"))
 
@@ -24,4 +23,8 @@ dependencies {
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
     testImplementation(kotlin("test"))
+    testImplementation(testFixtures(project(":core:model")))
+    testImplementation(testFixtures(project(":core:action")))
+    testImplementation(testFixtures(project(":core:brain")))
+    testImplementation(testFixtures(project(":core:grounding")))
 }

@@ -1,7 +1,6 @@
 package dev.lumen.core.policy
 
 import dev.lumen.core.model.Action
-import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalRequest
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.Reason

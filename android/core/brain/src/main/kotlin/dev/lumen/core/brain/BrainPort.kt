@@ -2,7 +2,6 @@ package dev.lumen.core.brain
 
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.Assertion
-import dev.lumen.core.model.BrainPin
 import dev.lumen.core.model.Goal
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RiskClass
