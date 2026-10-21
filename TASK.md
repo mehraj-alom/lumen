@@ -329,12 +329,25 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the agent never hijacks an active session.
 
-- [ ] `IdleGate` — screen state, touch observation, the idle window.
-- [ ] `TouchObserver` — resets the idle timer on any touch.
-- [ ] `VirtualDisplayManager` — creates the private display, moves the task, reports success or failure.
-- [ ] The surface-selection policy from `ARCH.md` §4.4.
-- [ ] The foreground-package guard re-check immediately before a live-surface gesture.
-- [ ] Tests: `I-06`, `I-07`, and `L-REC-11` (the user-touch pause within 1 s).
+- [x] `IdleGate` — screen state, touch observation, the idle window.
+- [x] `TouchObserver` — resets the idle timer on any touch.
+- [x] `VirtualDisplayManager` — creates the private display, moves the task, reports success or failure.
+- [x] The surface-selection policy from `ARCH.md` §4.4.
+- [x] The foreground-package guard re-check immediately before a live-surface gesture.
+- [x] Tests: `I-06`, `I-07`, and `L-REC-11` (the user-touch pause within 1 s).
+
+**Gate:** `./gradlew :platform:idle:test :platform:virtualdisplay:test` passes.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 110 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Quota impact:** a private display costs 30–80 MiB of graphics memory depending on its resolution, and it is released when the run ends. It is not opened while the agent is idle-waiting.
+
+**Notes for the next milestone:**
+- The surface policy is a fixed order: **allowlist, then private display, then the idle gate.** The allowlist is first because no amount of idleness makes an app the user has not allowed fair game. The private display is second because a surface the user cannot see never interrupts them.
+- A device that has **never** been touched counts as idle. The user has not been using the phone since the agent asked for the screen.
+- The virtual display is opportunistic, and the code says so: `canHost` reports what the platform *can* do rather than assuming, and a refusal falls back to the live surface when the idle gate allows. This is a platform limitation, not a design preference, and it is why `D1` says "opportunistically".
+- `InputManager.monitorGesture` is the only way to see a raw touch without a window, and it arrived in API 34. Below that the gate falls back to the accessibility event clock, which catches taps and scrolls but can miss a drag.
+
+**Spec corrections made with the code:**
+- `ARCH.md` §4.4 now states the surface-selection order explicitly, and names the idle-gate conditions in full.
 
 **Gate:** `./gradlew :platform:idle:test :platform:virtualdisplay:test connectedAndroidTest` passes.
 **Quota impact:** a virtual display costs ≈ 30–80 MiB depending on resolution; it is released when the run ends.

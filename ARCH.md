@@ -274,19 +274,46 @@ The detector is **pure** in `core/grounding` — it consumes an abstract `UiEven
 2. **Screenshot + VLM** — fallback, only when the tree is empty, ambiguous, or the critic reports a grounding failure. Billed against the VLM budget and toggled by the user.
 3. **Neither** — the step fails with `grounding_unavailable`; the critic decides whether to replan.
 
-### 4.4 Idle gate and virtual display
+### 4.4 Idle gate, virtual display, and the surface policy
+
+The agent acts on one of two surfaces: a **private virtual display** the user
+cannot see, or the **live screen**. Which one is a decision, and the
+decision has a fixed order:
 
 ```mermaid
 graph TB
-    A[Step needs a surface] --> B{Is live surface permitted?}
-    B -->|No — user active| C[Hold step: await_idle]
-    B -->|Yes| D{Target app supports<br/>secondary display?}
-    D -->|Yes| E[Move app to private<br/>VirtualDisplay]
-    D -->|No| F[Use live surface]
-    E --> G[Grounding reads the<br/>virtual display surface]
-    F --> H[Grounding reads the<br/>live surface]
-    C --> A
+    A[Step needs a surface] --> B{Package on the allowlist?}
+    B -->|No| D[Deny the step]
+    B -->|Yes| C{Foreground package<br/>on the allowlist?}
+    C -->|No| D
+    C -->|Yes| E{Private display available<br/>AND the app supports one?}
+    E -->|Yes| F[Launch the app on the<br/>private display]
+    E -->|No| G{Is the device idle?}
+    G -->|No| H[Hold the step,<br/>wait for the idle window]
+    G -->|Yes| I[Drive the live screen]
 ```
+
+**The order is the point.** The allowlist is checked first, because no
+amount of idleness makes an app the user has not allowed fair game. The
+private display comes next, because a surface the user cannot see never
+interrupts them. The idle gate is last, because the live screen is the
+last resort and it needs the user to be away.
+
+**The idle gate** permits a live-surface action when the screen is off, or
+the keyguard is locked, or nothing has touched the device for the idle
+window (default 60 s). Any touch resets the window. A device that has never
+been touched counts as idle.
+
+**The virtual display** is opportunistic, and honestly so. Most apps can
+render on a secondary display; some refuse, either because they are
+single-display or because they check. The manager reports what it *can* do
+rather than assuming, and a refusal falls back to the live surface when the
+idle gate allows it. This is a platform limitation, not a design choice,
+and it is why `D1` says "opportunistically".
+
+**The foreground package is re-checked immediately before every
+live-surface gesture.** A screen that changed under the agent is a screen the
+agent did not agree to act on.
 
 - `IdleGate` is satisfied when the screen is off, **or** the screen is on and no touch has been observed for the idle window (default 60 s).
 - Any touch event resets the timer; the agent pauses at the next boundary (≤ 1 s).

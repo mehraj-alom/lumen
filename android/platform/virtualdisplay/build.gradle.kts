@@ -12,6 +12,10 @@ android {
         testOptions.targetSdk = 35
     }
 
+    buildFeatures {
+        buildConfig = false
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -23,9 +27,10 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
     implementation(libs.androidx.core.ktx)
-    implementation(project(":core:model"))
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
 }
