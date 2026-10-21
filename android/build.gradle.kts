@@ -34,12 +34,14 @@ subprojects {
         }
     }
 
+    // The detekt extension in 1.23 uses plain values for these, not Gradle
+    // properties. Only `config` is a collection.
     detekt {
-        buildUponDefaultConfig.set(true)
-        allRules.set(false)
+        buildUponDefaultConfig = true
+        allRules = false
+        parallel = true
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-        baseline.set(rootProject.file("config/detekt/baseline.xml"))
-        parallel.set(true)
+        baseline = rootProject.file("config/detekt/baseline.xml")
     }
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
