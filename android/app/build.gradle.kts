@@ -66,6 +66,10 @@ dependencies {
     implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
 
+    // The runtime is a library whose service is merged into this application,
+    // so the console and the agent share a uid and can bind to each other.
+    implementation(project(":agent"))
+
     implementation(project(":core:model"))
     implementation(project(":core:action"))
     implementation(project(":core:grounding"))

@@ -3,7 +3,7 @@
 // the user can kill the console at any time without interrupting a run.
 
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -13,26 +13,23 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "dev.lumen.agent"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
+        testOptions.targetSdk = 35
     }
 
     buildFeatures {
         aidl = true
         buildConfig = false
     }
+
+    // The agent is a LIBRARY, not a second application. The runtime service
+    // is declared here with `android:process=":agent"` and its manifest is
+    // merged into the one application, so the console and the runtime share
+    // a uid.
+    //
+    // Two application modules would produce two apks with two uids, and the
+    // agent could not bind to the non-exported accessibility service, which
+    // is the whole reason the bridge exists.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

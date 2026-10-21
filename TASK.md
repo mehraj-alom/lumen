@@ -6,14 +6,23 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 ---
 
-## §0. Working rules (read once, apply always)
+## §0. Standing rules
 
-- [ ] **Nothing lands without approval.** A new third-party dependency, a new permission, a new platform capability, or a quota change requires explicit user approval **before** it enters a build file. The `TECHSTACK.md` §10 ledger is the only place a dependency may be added, and only after approval.
-- [ ] **Every milestone ends with a green gate and a quota statement.** The PR description states the RAM and storage impact in MiB.
-- [ ] **Every new I/O path** gets a sandbox-path-validation test (`TESTING.md` §3.2).
-- [ ] **Every new long-running loop** gets a cancellation test.
-- [ ] **Every new state field** gets a Room migration and a migration test.
-- [ ] **No application code before the user approves the Phase 3 documents.**
+These are not tasks. They apply to every change, every time, and they are
+enforced by the build rather than by review.
+
+- **Nothing lands without approval.** A new third-party dependency, a new
+  permission, a new platform capability, or a quota change requires explicit
+  user approval **before** it enters a build file. The `TECHSTACK.md` §10
+  ledger is the only place a dependency may be added, and only after
+  approval. `:dependencyGuard` and `:dependencyLedger` enforce it.
+- **Every milestone ends with a green gate and a quota statement.** The PR
+  description states the RAM and storage impact in MiB.
+- **Every new I/O path** gets a sandbox-path-validation test
+  (`TESTING.md` §3.2).
+- **Every new long-running loop** gets a cancellation test.
+- **Every new state field** gets a Room migration and a migration test.
+- **No application code before the user approves the Phase 3 documents.**
 
 ---
 
