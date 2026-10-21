@@ -11,6 +11,8 @@
 
 package dev.lumen.platform.accessibility;
 
+import dev.lumen.platform.accessibility.IAccessibilityListener;
+
 interface IAccessibilityBridge {
 
     /**

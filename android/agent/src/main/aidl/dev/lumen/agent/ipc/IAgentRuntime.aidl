@@ -11,6 +11,9 @@
 
 package dev.lumen.agent.ipc;
 
+import dev.lumen.agent.ipc.IAgentFrameCallback;
+import dev.lumen.agent.ipc.IAgentStateCallback;
+
 interface IAgentRuntime {
 
     /**
