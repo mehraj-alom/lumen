@@ -28,13 +28,8 @@ export function SpectateView({
     stream.onmessage = (message) => {
       const event = JSON.parse(message.data as string) as RunEvent
       if (event.type === 'approval.requested') {
-        void fetch(`/v1/runs/${runId}/approvals`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(event),
-        })
-          .then(() => api.getState(runId))
-          .then(setState)
+        onApproval(event as unknown as ApprovalRequest)
+        void api.getState(runId).then(setState)
       }
       setEvents((previous) => [...previous.slice(-99), event])
     }
@@ -56,7 +51,7 @@ export function SpectateView({
       stream.close()
       frames.close()
     }
-  }, [runId])
+  }, [runId, onApproval])
 
   const takeOver = useCallback(() => {
     void api.setTakeover(runId, true)
