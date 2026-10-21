@@ -38,14 +38,15 @@ jobs:
           key: ${{ runner.os }}-android-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-android-
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Accept licences
-        run: yes | sdkmanager --licenses > /dev/null
+        # The runner image already has the Android SDK and the command-line
+        # tools. The setup-android action is deliberately not used: it runs
+        # `sdkmanager tools`, and that package no longer exists in
+        # cmdline-tools 16, so the action fails before the build starts.
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/tools/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Dependency guard
         run: ./gradlew :dependencyGuard :dependencyLedger
@@ -63,7 +64,52 @@ jobs:
         run: ./gradlew test
 
       - name: Assemble
-        run: ./gradlew :app:assembleDebug :agent:assembleDebug
+        run: ./gradlew :app:assembleDebug
+
+  apk:
+    name: Installable APKs
+    runs-on: ubuntu-latest
+    needs: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install SDK packages
+        # The runner image already has the Android SDK and the command-line
+        # tools. The setup-android action is deliberately not used: it runs
+        # `sdkmanager tools`, and that package no longer exists in
+        # cmdline-tools 16, so the action fails before the build starts.
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/tools/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Build the APKs
+        # The splits produce one APK per ABI plus a universal one. The arm64
+        # APK is the one to install on a modern phone.
+        run: ./gradlew :app:assembleDebug
+
+      - name: Collect the APKs
+        run: |
+          mkdir -p artifacts
+          find android/app/build/outputs/apk -name '*.apk' -exec cp {} artifacts/ \;
+          ls -la artifacts/
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-apks
+          path: artifacts/*.apk
+          retention-days: 30
+          if-no-files-found: error
 
   console-web:
     name: Web console
@@ -91,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for f in AGENTS.md CLAUDE.md PRD.md ARCH.md TECHSTACK.md API_SPEC.md STYLE_GUIDE.md CODING_STANDARDS.md TESTING.md TASK.md RE_ANALYSIS.md; do
+          for f in AGENTS.md CLAUDE.md PRD.md ARCH.md TECHSTACK.md API_SPEC.md STYLE_GUIDE.md CODING_STANDARDS.md TESTING.md TASK.md RE_ANALYSIS.md OPERATIONS.md RELEASE.md; do
             if [ ! -f "$f" ]; then echo "missing spec file: $f"; missing=1; fi
           done
           exit $missing

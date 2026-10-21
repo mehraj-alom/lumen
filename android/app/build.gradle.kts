@@ -40,6 +40,18 @@ android {
         compose = true
     }
 
+    // One APK per ABI, plus a universal one. The arm64-v8a APK is the one
+    // to install on a modern phone; x86_64 is for the emulator. The
+    // universal APK is the fallback when you are not sure.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}")
     }
