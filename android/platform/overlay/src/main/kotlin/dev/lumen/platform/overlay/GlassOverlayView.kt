@@ -170,10 +170,7 @@ public class GlassOverlayView @JvmOverloads constructor(
             val position = (phase - index * spacing) % 1f
             val (x, y) = perimeterPoint(position)
 
-            haloPaint.color = Color.argb(
-                ((210 * alpha).toInt()).coerceIn(0, 255),
-                Color.red(halo), Color.green(halo), Color.blue(halo),
-            )
+            haloPaint.color = argb(((210 * alpha).toInt()).coerceIn(0, 255), halo)
             haloPaint.setShadowLayer(
                 GlassTokens.EDGE_GLOW_HALO_SHADOW_DP * density * alpha + 2f * density,
                 0f, 0f, haloPaint.color,
@@ -187,10 +184,7 @@ public class GlassOverlayView @JvmOverloads constructor(
 
             if (alpha > 0.45f) {
                 val coreAlpha = (alpha - 0.45f) / 0.55f
-                corePaint.color = Color.argb(
-                    ((255 * coreAlpha).toInt()).coerceIn(0, 255),
-                    Color.red(core), Color.green(core), Color.blue(core),
-                )
+                corePaint.color = argb(((255 * coreAlpha).toInt()).coerceIn(0, 255), core)
                 corePaint.setShadowLayer(
                     GlassTokens.EDGE_GLOW_CORE_SHADOW_DP * density * coreAlpha,
                     0f, 0f, corePaint.color,
@@ -232,16 +226,24 @@ public class GlassOverlayView @JvmOverloads constructor(
             phase * 2f * Math.PI * (1000f / GlassTokens.STATUS_DOT_PULSE_MS),
         ).toFloat()
 
-        dotPaint.color = Color.argb(
-            90,
-            Color.red(halo), Color.green(halo), Color.blue(halo),
-        )
+        dotPaint.color = argb(90, halo)
         canvas.drawCircle(x, y, GlassTokens.STATUS_DOT_HALO_RADIUS_DP * density, dotPaint)
 
-        dotPaint.color = color
-        dotPaint.setShadowLayer(5f * density, 0f, 0f, Color.argb(100, Color.red(color), Color.green(color), Color.blue(color)))
+        dotPaint.color = color.toInt()
+        dotPaint.setShadowLayer(5f * density, 0f, 0f, argb(100, color))
         canvas.drawCircle(x, y, radius * pulse, dotPaint)
         dotPaint.clearShadowLayer()
+    }
+
+    /**
+     * An ARGB colour with [alpha] over the token [color].
+     *
+     * The tokens are Long, because an ARGB literal does not fit in an Int
+     * with its sign bit set, and the android colour accessors take an Int.
+     */
+    private fun argb(alpha: Int, color: Long): Int {
+        val value = color.toInt()
+        return Color.argb(alpha, Color.red(value), Color.green(value), Color.blue(value))
     }
 
     /** The rounded rectangle the surface occupies, for a Canvas fallback. */
