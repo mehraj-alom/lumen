@@ -290,7 +290,7 @@ fails the build when a declared group is not in
 | `work-runtime-ktx` | `androidx.work` | `agent` | Keepalive | **Pre-approved** |
 | `credentials` | `androidx.credentials` | `app` | Optional sign-in | **Pending** |
 | `okhttp`, `logging-interceptor`, `mockwebserver` | `com.squareup.okhttp3` | `core:protocol`, `agent` | HTTP + WebSocket | **Pre-approved** |
-| `android-database-sqlcipher`, `android-database-sqlcipher-ktx` | `net.zetetic` | `core:store` | Encrypting the observation store | **Approved 2026-10-20** — native dependency |
+| `sqlcipher-android` | `net.zetetic` | `core:store` | Encrypting the observation store | **Approved 2026-10-20** — native dependency |
 | `llama.cpp` (JNI) | `org.llama` | `core:brain` | On-device inference | **Approved 2026-10-21** — native dependency, NDK build, behind the `localInference` flavour |
 | `junit` | `junit` | test | Test framework | **Pre-approved** |
 | `truth` | `com.google.truth` | test | Assertions | **Pre-approved** |

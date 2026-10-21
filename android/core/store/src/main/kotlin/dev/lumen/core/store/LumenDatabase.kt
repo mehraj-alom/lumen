@@ -8,7 +8,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -60,7 +60,8 @@ public abstract class LumenDatabase : RoomDatabase() {
             keyProvider: DatabaseKeyProvider,
         ): LumenDatabase {
             val passphrase = keyProvider.passphrase()
-            val factory = SupportFactory(passphrase, null, true)
+            // The passphrase is cleared once the database is opened.
+            val factory = SupportOpenHelperFactory(passphrase, null, true)
 
             return Room.databaseBuilder(context, LumenDatabase::class.java, DATABASE_NAME)
                 .openHelperFactory(factory)
@@ -158,4 +159,4 @@ public class DatabaseKeyProvider(private val context: Context) {
 
 /** The SQLCipher open helper factory, exposed for tests. */
 public fun sqlCipherFactory(passphrase: ByteArray): SupportSQLiteOpenHelper.Factory =
-    SupportFactory(passphrase, null, true)
+    SupportOpenHelperFactory(passphrase, null, true)

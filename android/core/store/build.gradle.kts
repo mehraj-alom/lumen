@@ -58,7 +58,6 @@ dependencies {
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.sqlcipher)
-    implementation(libs.sqlcipher.ktx)
 
     implementation(project(":core:model"))
     implementation(project(":core:sandbox"))
