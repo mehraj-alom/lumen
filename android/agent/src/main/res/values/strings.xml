@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name">LUMEN Agent</string>
     <string name="agent_notification_channel">lumen_runtime</string>
+    <string name="notification_title">LUMEN is working</string>
+    <string name="notification_text">The agent is running. Tap stop to end the run.</string>
+    <string name="notification_stop">Stop</string>
 </resources>

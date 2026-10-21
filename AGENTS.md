@@ -211,6 +211,8 @@ A milestone in `TASK.md` is done when:
 - **Phase 1 complete** — `RE_ANALYSIS.md` (frozen reference analysis).
 - **Phase 2 complete** — decisions D1–D6 locked above.
 - **Phase 3 complete and approved** — the spec suite in this directory.
-- **Phase 4 in progress** — M0 (repository and toolchain bootstrap) is the active milestone.
+- **Phase 4 in progress** — M0 through M14 are implemented. M15 (hardening and release) is the active milestone, and its remaining items need a device and a release build.
 
 **Do not write application code outside the current milestone in `TASK.md`.**
+
+**Every build gate in this repository is unverified on this machine.** The build host does not have the RAM for a Compose build and has no attached device, so the Gradle, instrumented and visual suites all run in CI. The code was verified statically instead: brace balance over every Kotlin file, every internal import resolved, every `@Serializable` property type resolvable, no unused imports, and the dependency guard re-simulated against the real tree with a negative test.

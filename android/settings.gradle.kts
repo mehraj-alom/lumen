@@ -43,6 +43,7 @@ include(":platform:capture")
 include(":platform:virtualdisplay")
 include(":platform:idle")
 include(":platform:overlay")
+include(":platform:inference")
 
 // --- application modules ---
 include(":agent")

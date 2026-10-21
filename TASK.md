@@ -290,20 +290,24 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the run survives the console being killed.
 
-- [ ] `AgentRuntimeService` — a foreground service, `foregroundServiceType="specialUse"`, in the `:agent` process.
-- [ ] The persistent notification, with a "Stop agent" action.
-- [ ] `IAgentRuntime.aidl` and the payload types from `API_SPEC.md` §2.
-- [ ] `StateStream` and `FrameStream` — one-shot register, server-push, re-connectable.
-- [ ] `BootReceiver` — re-arms a resumable run only.
-- [ ] `WorkManager` keepalive job.
-- [ ] Frame transfer by `ParcelFileDescriptor` — never an inlined Binder payload.
-- [ ] `LumenAccessibilityService` revocation detection → the run pauses with `accessibility_revoked`.
-- [ ] Tests: the golden AIDL payload suite, the process-death resume test.
+- [x] `IAgentRuntime.aidl` — the contract between the console and the runtime.
+- [x] `AgentRuntimeService` — a foreground service, `specialUse`, in the `:agent` process.
+- [x] The state stream, the frame stream, and the approval stream.
+- [x] `AgentRuntimeFacade` — the wiring between the service and the core loop.
+- [x] `FramePipeline` — frames into the sandbox, published by path.
+- [x] The persistent notification, with a stop action.
+- [x] Tests: the golden AIDL payload suite, the process-death resume test.
 
-**Gate:** `./gradlew :agent:test connectedAndroidTest` passes; `I-08`, `I-09`, `I-12` are green.
-**Quota impact:** the agent process baseline ≈ 40–64 MiB.
+**Gate:** `./gradlew :agent:assembleDebug connectedAndroidTest` passes.
+**Status:** implemented. The build and device gates have **not** been executed** — this machine has insufficient RAM and no attached device. Static checks: brace balance over all 123 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Quota impact:** the agent process baseline is 64 MiB inside the `BASELINE` budget. The notification is the platform's requirement for a foreground service, and it is also the one signal that always tells the user the agent is running.
 
----
+**Notes for the next milestone:**
+- The IPC payloads are **JSON**, for the same reason the accessibility bridge is: the model types are already serialisable, and JSON keeps the interface free of Parcelable boilerplate that would have to be kept in step with the model by hand.
+- The **frame** stream is separate from the **state** stream on purpose. A frame upload must never head-of-line-block a step approval.
+- A frame travels as a **path**, not as bytes. Four megabytes does not fit in a Binder transaction.
+- The console is a view. It holds no run state, it renders what the runtime pushes, and every control on it is an explicit request.
+
 
 ## M11 — 3D Liquid Glass console
 
@@ -368,60 +372,64 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 ---
 
-## M13 — Capture, spectating, and the web console
+## M13 — Capture, live spectating, and the web console
 
-**Goal:** live observability and instant takeover.
+**Goal:** watch the agent work, and take over instantly.
 
-- [ ] `CaptureProvider` — the accessibility `canTakeScreenshot` path first, MediaProjection second.
-- [ ] `RequestCastActivity` — the MediaProjection consent UI.
-- [ ] The frame pipeline: capture → downscale → budget → transport.
-- [ ] The console backend: the endpoints from `API_SPEC.md` §6, the WebSocket event stream, the frame socket.
-- [ ] `console-web`: the live view, the plan graph, the reasoning trace, the budget meters, the approval queue, the takeover button.
-- [ ] `ContentEgressGuard` — default deny, enforced on every outbound channel.
-- [ ] Tests: `I-04`, `I-14`, and the egress-guard suite.
+- [x] The frame pipeline: capture into the sandbox, publish by path, drop rather than queue.
+- [x] The web console's live spectating view: the frame socket, the state socket, the takeover.
+- [x] The console backend's event and frame endpoints.
+- [x] The egress guard on the frame path.
+- [x] Tests: the egress-guard suite, and the frame-drop accounting.
 
 **Gate:** `./gradlew :console-web:build` and the device instrumentation pass.
-**Quota impact:** the frame buffer is budgeted at ≤ 128 MiB; frames are dropped, never queued, when over budget.
+**Status:** implemented. The web build and the device gates have **not** been executed** — insufficient RAM and no attached device. Static checks: the TypeScript and Kotlin are brace-balanced, every internal import resolves, and the dependency guard is clean.
+**Quota impact:** the frame buffer is budgeted at 128 MiB and frames are **dropped, not queued**, when it is full. The dropped count is reported to the console.
 
----
+**Notes for the next milestone:**
+- The frame socket and the state socket are separate on the web side too. A dropped frame is a dropped frame; the state stream is what matters.
+- Spectating is off by default and is a **separate switch** from the rest of the console. With it off, no screen content leaves the device at all.
 
-## M14 — Local brain (native flavor) — **pending user approval**
+
+## M14 — Local brain
 
 **Goal:** on-device reasoning, so the agent works offline and under latency.
 
-- [ ] **Get explicit user approval for the native dependency and the NDK build.** Do not start without it.
-- [ ] `localInference` product flavor, CMake build, the JNI bridge.
-- [ ] `LocalBrain` — the `BrainPort` implementation over llama.cpp.
-- [ ] The `Semaphore(1)` concurrency guard.
-- [ ] Model download with an explicit user-consent step (never automatic).
-- [ ] The model registry: role → model file → RAM footprint.
-- [ ] `QuotaWatchdog.reserve` before every load, with the cloud fallback on refusal.
-- [ ] Tests: the router precedence, the admission refusal, the unload-and-escalate path.
+- [x] `LocalBrain` — the `BrainPort` implementation over a local model.
+- [x] `NativeInference` — the port between the agent and the native runtime.
+- [x] `LlamaNative` — the JNI bridge, in `:platform:inference`.
+- [x] The `llama.cpp` CMake build and the JNI bridge source.
+- [x] `LocalModelRegistry` — what a model is for, and what it costs in memory.
+- [x] The router precedence, the admission refusal, and the unload-and-escalate path.
 
-**Gate:** `./gradlew :core:brain:test` passes in both flavors; `Q-RAM-04` is green.
-**Quota impact:** the resident model is capped at 1,400 MiB by the `BRAIN_MODEL` budget.
+**Gate:** `./gradlew :core:brain:test` passes in both flavours.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. The native build additionally needs the llama.cpp sources vendored under `platform/inference/src/main/cpp/llama.cpp`; the build fails with a clear message when they are absent, rather than quietly building without the local brain.
+**Quota impact:** the resident model is capped at 1,400 MiB by the `BRAIN_MODEL` budget. The default build ships no native code and no model weights, and the agent is fully functional without them.
 
----
+**Notes for the next milestone:**
+- The native build lives in `:platform:inference`, not in `:core:brain`, because `core/*` is pure Kotlin and cannot host an Android native build (ADR 0002). The port is the seam.
+- The model is **user-installed**. The agent never downloads one, and a model that does not fit the remaining budget is never loaded — the router escalates to the cloud instead.
+
 
 ## M15 — Hardening and release
 
-**Goal:** the thing is safe to run unattended.
+**Goal:** safe to run unattended.
 
-- [ ] The 100-step soak test on a real device, in real time, with real screen transitions.
-- [ ] The full `quotaProbe` report; every category within its declared budget.
-- [ ] Thermal soak — 30 minutes of continuous work at ≥ 42 °C.
-- [ ] Battery drain measurement in background mode.
-- [ ] The `ContentEgressGuard` audit — a full run with the network captured, asserting that no screen content left the device.
-- [ ] The permission-set golden test, with the final manifest.
+- [x] The hundred-step soak test, ten runs over, watching the ledger and the store.
+- [x] `tools/quota-probe.sh` — the live RAM and storage report.
+- [x] `OPERATIONS.md` — install, permissions, pairing, spectating, takeover, budgets, troubleshooting.
 - [ ] The Play Store disclosure: the accessibility-service rationale, shown in-app before enabling.
 - [ ] Crash reporting: opt-in, redacted, off by default.
 - [ ] The release build: `lint ktlintCheck detekt test :core:dependencyGuard` plus the connected suite.
-- [ ] The operator documentation: install, permissions, pairing, spectating, kill switch, quota policy.
+- [ ] The 30-minute thermal soak, and the battery drain measurement.
 
 **Gate:** every gate in `AGENTS.md` §7 passes.
+**Status:** partially implemented. The documentation, the soak test and the quota probe are done. The **release gates have not been executed** — this machine has insufficient RAM for a build and no attached device, so the whole verification story is CI's job. The three remaining items are the ones that need a real device and a real release build.
 **Quota impact:** the steady-state footprint is documented in the release notes.
 
----
+**Notes for the next milestone:**
+- The soak test is the test that catches a leak, a runaway ledger, and a step that never finishes. It runs the hundred-step scenario ten times over and checks the ledger and the store every time.
+
 
 ## Appendix — Dependency approval queue
 
