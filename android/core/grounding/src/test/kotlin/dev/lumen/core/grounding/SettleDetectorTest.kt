@@ -1,5 +1,6 @@
 package dev.lumen.core.grounding
 
+import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.SettleKind
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay

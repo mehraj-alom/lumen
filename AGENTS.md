@@ -111,7 +111,7 @@ Any change to a number below requires an ADR and a `TESTING.md` update.
 
 **Module boundary rule:** `core/*` is **pure Kotlin/JVM** — no `android.*` imports, no framework types in public APIs. `platform/*` is the only place Android APIs live. This is what makes the loop testable on the JVM.
 
-**One named exception (ADR 0002):** `:core:store` is an Android library, because Room is an Android-only artifact. The persistence *port* and every DTO live in `:core:model`, which stays pure, so `:core:agent` — the loop — remains a plain JVM module with a fake store. `:core:store` may depend on `androidx.room` and `androidx.datastore` and nothing else.
+**One named exception (ADR 0002):** `:core:store` is an Android library, because Room is an Android-only artifact. The persistence *port* (`StateStore`) and every DTO live in `:core:model`, which stays pure, so `:core:agent` — the loop — remains a plain JVM module with a fake store, and `:core:agent:test` needs no Robolectric. `:core:store` may depend on `androidx.room`, `androidx.datastore` and `androidx.sqlite` and nothing else outside `core/`.
 
 ---
 

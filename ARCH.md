@@ -99,7 +99,9 @@ app/             Android app module — process :ui
 
 **Boundary rule (enforced by `:core:dependencyGuard`):** `core/*` may not reference `android.*`, `platform/*`, or `agent/*`. `platform/*` may not reference `agent/*`. `app/*` may not reference `agent/*` internals — it goes through AIDL.
 
-**One named exception (ADR 0002):** `:core:store` is an Android library, because Room is an Android-only artifact. The persistence *port* (`StateStore`) and every DTO live in `:core:model`, which stays pure, so `:core:agent` — the loop — remains a plain JVM module with a fake store, and `:core:agent:test` needs no Robolectric. `:core:store` may depend on `androidx.room` and `androidx.datastore` and nothing else.
+**One named exception (ADR 0002):** `:core:store` is an Android library, because Room is an Android-only artifact. The persistence *port* (`StateStore`) and every DTO live in `:core:model`, which stays pure, so `:core:agent` — the loop — remains a plain JVM module with a fake store, and `:core:agent:test` needs no Robolectric. `:core:store` may depend on `androidx.room`, `androidx.datastore` and `androidx.sqlite` and nothing else outside `core/`.
+
+**Test fixtures.** A module that owns a fake publishes it through the Gradle `java-test-fixtures` plugin, in `src/testFixtures/kotlin`. A module that needs one declares `testImplementation(testFixtures(project(":core:action")))`. There is no shared test module, the fakes never reach a shipped classpath, and a fake lives next to the code it stands in for. `SyntheticTreeBuilder` (`:core:grounding`) and `FakeActionExecutor` (`:core:action`) are the first two.
 
 ---
 

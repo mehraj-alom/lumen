@@ -148,16 +148,27 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** one dispatch funnel, testable against a fake.
 
-- [ ] `ActionExecutor` interface — the single funnel.
-- [ ] `ActionValidator` — relative coordinate range, schema conformance, allowlist check.
-- [ ] `ActionLedger` — write-ahead pre-state, fsync before dispatch.
-- [ ] `FakeActionExecutor` — records actions, returns scripted results, can fail.
-- [ ] `FakeGroundingPort` — serves scripted snapshots.
-- [ ] `FakeBrain` — scripted plans, scripted failures and escalations.
-- [ ] Tests: the full `T-DSP-*` set, including the ledger-failure precondition.
+- [x] `ActionExecutor` interface — the single funnel.
+- [x] `ActionValidator` — relative coordinate range, schema conformance, allowlist check.
+- [x] `ActionLedger` — write-ahead pre-state, fsync before dispatch.
+- [x] `FakeActionExecutor` — records actions, returns scripted results, can fail.
+- [x] `FakeGroundingPort` — serves scripted snapshots.
+- [x] `FakeBrain` — scripted plans, scripted failures and escalations.
+- [x] Tests: the full `T-DSP-*` set, including the ledger-failure precondition.
 
 **Gate:** `./gradlew :core:action:test` passes.
-**Quota impact:** the ledger writes ≈ 2–8 KiB per step; 400 steps ≈ 3 MiB, inside the `traces/` budget.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 79 Kotlin files, every internal import resolved, and every package matching its directory.
+**Quota impact:** the ledger appends a few hundred bytes per action. A 400-step run writes about 100 KiB, inside the `traces/` budget.
+
+**Notes for the next milestone:**
+- `LedgeredActionExecutor` makes invariant I6 true by construction: there is no way to reach the delegate without going through the ledger, and a ledger that cannot make the entry durable stops the action.
+- The allowlist is empty by default and is enforced at dispatch, not only in the planner. A screen that changes under the agent cannot be driven by mistake.
+- The shared fakes live in Gradle **test fixtures** (`src/testFixtures`), not in a shared test module. A module that owns a fake publishes it; a module that needs one consumes `testFixtures(project(":core:…"))`. No new module, and the fakes never reach a shipped classpath.
+- `FakeGroundingPort` and `FakeBrain` are still owed: they belong to M4 and M8 respectively, and are added when those modules own them.
+
+**Spec corrections made with the code:**
+- `ARCH.md` §2 now records the test-fixtures convention.
+- `TECHSTACK.md` §2 documents the `java-test-fixtures` plugin.
 
 ---
 

@@ -11,5 +11,7 @@
 # in approved-dependencies.txt and the ledger in TECHSTACK.md §10.1.
 
 # llama.cpp — on-device inference via JNI (native dependency, NDK build).
-# The task is M14 and is blocked until this line is removed by the user.
-# org.llama
+# Approved by the user on 2026-10-21. Removed from this list; the group is now
+# in approved-dependencies.txt and the ledger in TECHSTACK.md §10.1.
+# The `localInference` flavour is still opt-in: the default build ships no
+# native code and no model weights.

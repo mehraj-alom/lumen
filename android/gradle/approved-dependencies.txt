@@ -32,6 +32,11 @@ com.google.devtools.ksp
 # --- Networking (approved: TECHSTACK.md §10) ---
 com.squareup.okhttp3
 
+# --- On-device inference ---
+# Approved by the user on 2026-10-21. The native runtime is behind the
+# `localInference` product flavour; the default build has no native code.
+org.llama
+
 # --- Storage encryption ---
 # Approved by the user on 2026-10-20. The observation store holds screen
 # content, so it is encrypted at rest with a Keystore-managed key.

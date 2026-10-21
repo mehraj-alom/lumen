@@ -1,5 +1,6 @@
-package dev.lumen.core.grounding
+package dev.lumen.core.grounding.fixtures
 
+import dev.lumen.core.grounding.TreeSnapshot
 import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.OverlayInfo
 import dev.lumen.core.model.RelativeRect
@@ -11,7 +12,7 @@ import dev.lumen.core.model.RelativeRect
  * that passes against tidy synthetic trees and fails against these is an
  * agent that only works in the test.
  */
-internal class SyntheticTreeBuilder(private val app: String = "com.example.app") {
+public class SyntheticTreeBuilder(private val app: String = "com.example.app") {
 
     private val nodes = mutableListOf<NodeRef>()
 
@@ -20,10 +21,10 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         return node
     }
 
-    fun root(className: String = "android.widget.FrameLayout"): NodeRef =
+    public fun root(className: String = "android.widget.FrameLayout"): NodeRef =
         add(NodeRef(id = nodes.size, className = className, packageName = app, depth = 0))
 
-    fun child(
+    public fun child(
         parent: NodeRef,
         className: String,
         text: String? = null,
@@ -52,7 +53,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         ),
     )
 
-    fun build(overlays: List<OverlayInfo> = emptyList()): TreeSnapshot = TreeSnapshot(
+    public fun build(overlays: List<OverlayInfo> = emptyList()): TreeSnapshot = TreeSnapshot(
         app = app,
         nodes = nodes.toList(),
         overlays = overlays,
@@ -64,7 +65,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
          * A label on a node that is not itself clickable, with a clickable
          * parent. "Click the thing that says Pay" has to find the parent.
          */
-        fun labelOnNonClickableChild(): TreeSnapshot {
+        public fun labelOnNonClickableChild(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             val card = builder.child(
@@ -86,7 +87,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
          * A clickable child whose parent holds the text. The other half of
          * the same problem.
          */
-        fun clickableChildWithParentLabel(): TreeSnapshot {
+        public fun clickableChildWithParentLabel(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             val row = builder.child(
@@ -106,7 +107,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** Two nodes with the same text and the same bounds. */
-        fun duplicateLabels(): TreeSnapshot {
+        public fun duplicateLabels(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             val bounds = RelativeRect(0.1, 0.1, 0.4, 0.2)
@@ -116,7 +117,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A recycled list row whose holder still carries the old bounds. */
-        fun staleRecyclerItem(): TreeSnapshot {
+        public fun staleRecyclerItem(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             val list = builder.child(
@@ -134,11 +135,11 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A canvas-rendered screen: no nodes at all. */
-        fun canvasRegion(): TreeSnapshot =
+        public fun canvasRegion(): TreeSnapshot =
             SyntheticTreeBuilder().build()
 
         /** A node whose content description carries the text. */
-        fun contentDescriptionOnly(): TreeSnapshot {
+        public fun contentDescriptionOnly(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             builder.child(
@@ -151,7 +152,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A screen whose content is web content. */
-        fun webContent(): TreeSnapshot {
+        public fun webContent(): TreeSnapshot {
             val builder = SyntheticTreeBuilder(app = "com.example.browser")
             val root = builder.root()
             val web = builder.child(
@@ -168,7 +169,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A screen with a system overlay from another application. */
-        fun withForeignOverlay(): TreeSnapshot {
+        public fun withForeignOverlay(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             builder.child(parent = root, className = "android.widget.TextView", text = "Behind")
@@ -184,7 +185,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A deep tree, for the summariser's budget test. */
-        fun deepTree(depth: Int = 12, breadth: Int = 4): TreeSnapshot {
+        public fun deepTree(depth: Int = 12, breadth: Int = 4): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             var parent = builder.root()
             repeat(depth) { level ->
@@ -200,7 +201,7 @@ internal class SyntheticTreeBuilder(private val app: String = "com.example.app")
         }
 
         /** A tree with a text field, a button, and a scrollable list. */
-        fun typicalScreen(): TreeSnapshot {
+        public fun typicalScreen(): TreeSnapshot {
             val builder = SyntheticTreeBuilder()
             val root = builder.root()
             builder.child(

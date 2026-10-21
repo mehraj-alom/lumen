@@ -1,6 +1,7 @@
 package dev.lumen.core.grounding
 
 import com.google.common.truth.Truth.assertThat
+import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.RelativePoint
 import org.junit.Test
 

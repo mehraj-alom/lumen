@@ -36,15 +36,17 @@ Every version here is a **lock**, not a suggestion. Upgrades are ADR-worthy. Eve
 
 ```kotlin
 // android/settings.gradle.kts
-include(":core:model", ":core:agent", ":core:brain", ":core:policy",
-        ":core:quota", ":core:sandbox", ":core:store", ":core:protocol",
-        ":core:grounding", ":core:action",
+include(":core:model", ":core:action", ":core:grounding", ":core:policy",
+        ":core:quota", ":core:sandbox", ":core:store", ":core:brain",
+        ":core:protocol", ":core:agent",
         ":platform:accessibility", ":platform:capture",
         ":platform:virtualdisplay", ":platform:idle", ":platform:overlay",
         ":agent", ":app", ":console-web")
 ```
 
 `:core:*` are `java-library` + `kotlin("jvm")` modules with **no** Android plugin. This is the mechanism that makes the agent loop testable on the JVM without Robolectric.
+
+**Test fixtures.** A module that owns a fake applies the built-in `java-test-fixtures` plugin and puts the fake in `src/testFixtures/kotlin`. A consumer declares `testImplementation(testFixtures(project(":core:action")))`. There is no shared test module, and a fake never reaches a shipped classpath.
 
 ```kotlin
 // android/core/model/build.gradle.kts
@@ -289,7 +291,7 @@ fails the build when a declared group is not in
 | `credentials` | `androidx.credentials` | `app` | Optional sign-in | **Pending** |
 | `okhttp`, `logging-interceptor`, `mockwebserver` | `com.squareup.okhttp3` | `core:protocol`, `agent` | HTTP + WebSocket | **Pre-approved** |
 | `android-database-sqlcipher`, `android-database-sqlcipher-ktx` | `net.zetetic` | `core:store` | Encrypting the observation store | **Approved 2026-10-20** — native dependency |
-| `llama.cpp` (JNI) | `org.llama` | `core:brain` | On-device inference | **Pending** — native dependency, NDK build |
+| `llama.cpp` (JNI) | `org.llama` | `core:brain` | On-device inference | **Approved 2026-10-21** — native dependency, NDK build, behind the `localInference` flavour |
 | `junit` | `junit` | test | Test framework | **Pre-approved** |
 | `truth` | `com.google.truth` | test | Assertions | **Pre-approved** |
 | `mockk` | `io.mockk` | test | Mocking | **Pre-approved** |
