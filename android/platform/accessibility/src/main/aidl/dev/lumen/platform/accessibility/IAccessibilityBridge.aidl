@@ -54,6 +54,19 @@ interface IAccessibilityBridge {
     boolean openApp(String packageName);
 
     /**
+     * Sets the active-status indicator.
+     *
+     * @param state the state to show, for example WORKING
+     * @param mode the mode to show it in, for example EDGE_GLOW
+     */
+    void setIndicator(String state, String mode);
+
+    /**
+     * Removes the active-status indicator.
+     */
+    void hideIndicator();
+
+    /**
      * Registers a listener for the service's state.
      */
     void registerListener(IAccessibilityListener listener);

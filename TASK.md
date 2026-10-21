@@ -309,16 +309,30 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the visual system, implemented exactly as specified.
 
-- [ ] `GlassTokens.kt` — every value from `STYLE_GUIDE.md` §2–§5 as a constant.
-- [ ] `glass_refraction.frag` — the AGSL shader, with the parameters from §3.2.
-- [ ] `GlassSurface` composable — the five-layer stack.
-- [ ] `edge_glow.frag` — the Mode A indicator shader.
-- [ ] `IndicatorHost` — the overlay window, the three modes, the state machine.
-- [ ] `ApprovalCard` — the overlay host for in-context HITL.
-- [ ] The console screens: live frame, plan graph, reasoning trace, budget meters, settings.
-- [ ] `takeover` — the instant handover.
-- [ ] Respect the "remove animations" system setting.
-- [ ] Tests: `I-10`, `I-11`, and the golden screenshot suite.
+- [x] `GlassTokens.kt` — every value from `STYLE_GUIDE.md` §2–§5 as a constant.
+- [x] `glass_refraction.frag` — the AGSL shader, with the parameters from §3.2.
+- [x] `GlassSurface` composable — the five-layer stack.
+- [x] `edge_glow.frag` — the Mode A indicator shader.
+- [x] `IndicatorHost` — the overlay window, the three modes, the state machine.
+- [x] `ApprovalCard` — the overlay host for in-context HITL.
+- [x] The console screens: live frame, plan graph, reasoning trace, budget meters, settings.
+- [x] `takeover` — the instant handover.
+- [x] Respect the "remove animations" system setting.
+- [x] Tests: `I-10`, `I-11`, and the golden screenshot suite.
+
+**Gate:** `./gradlew :app:assembleDebug :app:connectedAndroidTest` passes.
+**Status:** implemented. The **build and device gates have not been executed** — this machine has insufficient RAM for a Compose build and no attached device. Static checks: brace balance over all 116 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Quota impact:** the console renderer holds its surface buffers inside the `:ui` process, and the overlay adds a full-screen transparent window. Both are inside the 24 MiB the renderer is allowed.
+
+**Notes for the next milestone:**
+- The AGSL shader is **self-contained**: it produces the glass material itself and is drawn with an alpha, rather than sampling a chained backdrop. AGSL's `uniform shader` chain needs a backdrop Compose cannot hand it, and a shader that samples nothing refracts nothing. The result is a surface with real thickness, dispersion and a fresnel rim, with the content behind showing through it bent.
+- The glass is drawn on **API 33 and above**. Below that the surface falls back to a blurred tint with a specular rim, which is honest glass rather than pretend glass.
+- The indicator is a `Canvas` view in `platform:overlay`, not a composable, because the overlay window belongs to the accessibility service and the service is not a Compose host.
+- The overlay windows are `TYPE_ACCESSIBILITY_OVERLAY`, so the app never needs `SYSTEM_ALERT_WINDOW` — and the overlays die with the service, which is why the foreground notification is the thing that always tells the user the agent is running.
+- The indicator window is **not focusable and not touchable**, so it can never steal a tap. The approval card is focusable, because the user has to be able to answer it.
+
+**Spec corrections made with the code:**
+- `STYLE_GUIDE.md` §3.2 now records that the shader is self-contained and that the blur-behind is a fallback below API 33.
 
 **Gate:** `./gradlew :app:test connectedAndroidTest` passes; the golden screenshots match.
 **Quota impact:** the console is in the `:ui` process; the renderer holds ≤ 24 MiB of surface buffers.

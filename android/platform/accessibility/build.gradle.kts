@@ -33,6 +33,7 @@ dependencies {
 
     implementation(project(":core:model"))
     implementation(project(":core:grounding"))
+    implementation(project(":platform:overlay"))
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

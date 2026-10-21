@@ -1,6 +1,7 @@
 package dev.lumen.platform.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
@@ -77,6 +78,17 @@ public class LumenAccessibilityService : AccessibilityService() {
             }
         }
 
+        override fun setIndicator(state: String?, mode: String?) {
+            overlay.showIndicator(
+                state = state.toIndicatorState(),
+                mode = mode.toIndicatorMode(),
+            )
+        }
+
+        override fun hideIndicator() {
+            overlay.hideIndicator()
+        }
+
         override fun registerListener(listener: IAccessibilityListener?) {
             if (listener == null) return
             synchronized(lock) { listeners += listener }
@@ -89,6 +101,14 @@ public class LumenAccessibilityService : AccessibilityService() {
     }
 
     private val host: AccessibilityServiceHost by lazy { ServiceAccessibilityHost(this) }
+
+    /** The overlay windows: the indicator and the approval card. */
+    private val overlay: dev.lumen.platform.overlay.OverlayHost by lazy {
+        dev.lumen.platform.overlay.OverlayHost(
+            context = this,
+            windowManager = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager,
+        )
+    }
 
     private val injector: GestureInjector by lazy {
         GestureInjector(this) {
@@ -121,6 +141,7 @@ public class LumenAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        overlay.hideAll()
         scope.cancel()
         super.onDestroy()
     }

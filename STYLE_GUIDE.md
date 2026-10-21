@@ -93,6 +93,10 @@ These drive the indicator, the approval cards, and the run state everywhere. The
 
 **Rule:** `refractionStrength = 0` is only valid for `GlassSurface.Inline`, and inline surfaces must then use a plain tint with no rim specular.
 
+**The shader is self-contained.** It produces the glass material itself — the warp field, the dispersion, the fresnel rim — and is drawn with an alpha, rather than sampling a chained backdrop. AGSL's `uniform shader` chain needs a backdrop that Compose cannot hand it, and a shader that samples nothing refracts nothing. The content behind the surface shows through it, bent.
+
+**The glass is AGSL, and AGSL is API 33.** Below that, the surface falls back to a blurred tint with a specular rim: honest glass rather than pretend glass. The same applies to the edge glow, which has a Canvas comet fallback with the same picture.
+
 ### 3.3 Rim and specular
 
 | Token | Value |
