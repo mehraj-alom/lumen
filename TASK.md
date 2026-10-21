@@ -418,17 +418,23 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 - [x] The hundred-step soak test, ten runs over, watching the ledger and the store.
 - [x] `tools/quota-probe.sh` — the live RAM and storage report.
 - [x] `OPERATIONS.md` — install, permissions, pairing, spectating, takeover, budgets, troubleshooting.
-- [ ] The Play Store disclosure: the accessibility-service rationale, shown in-app before enabling.
-- [ ] Crash reporting: opt-in, redacted, off by default.
-- [ ] The release build: `lint ktlintCheck detekt test :core:dependencyGuard` plus the connected suite.
-- [ ] The 30-minute thermal soak, and the battery drain measurement.
+- [x] The Play Store disclosure: the accessibility-service rationale, shown in-app before enabling.
+- [x] Crash reporting: opt-in, redacted, off by default.
+- [x] The release checklist: `RELEASE.md` — the gates, the native flavour, the disclosure, the privacy claims, the version rename.
+- [x] The settings screen: the indicator mode, the brain pin, spectating, crash reporting, the idle window.
+- [x] `tools/soak.sh` — the 30-minute thermal and battery soak, and its report.
+- [ ] The release build itself: `lint ktlintCheck detekt test :core:dependencyGuard` plus the connected suite, run on CI and on a device.
+- [ ] The 30-minute thermal soak, run on a device.
 
 **Gate:** every gate in `AGENTS.md` §7 passes.
-**Status:** partially implemented. The documentation, the soak test and the quota probe are done. The **release gates have not been executed** — this machine has insufficient RAM for a build and no attached device, so the whole verification story is CI's job. The three remaining items are the ones that need a real device and a real release build.
+**Status:** the code is complete. The **release gates have not been executed** — this machine has insufficient RAM for a build and no attached device, so the whole verification story is CI's job. What is left is to *run* the gates: the CI workflow, the device suite, the thermal soak and the release build.
 **Quota impact:** the steady-state footprint is documented in the release notes.
 
 **Notes for the next milestone:**
 - The soak test is the test that catches a leak, a runaway ledger, and a step that never finishes. It runs the hundred-step scenario ten times over and checks the ledger and the store every time.
+- The crash reporter is **off by default** and even when it is on it only writes into the sandbox. Sending a report anywhere is a separate, explicit act.
+- The redaction is structural rather than a filter: a report is built from a fixed set of fields, so the screen content never reaches it in the first place. The stack trace is still scrubbed, because a path and an exception message are the two places it can leak.
+- The disclosure is a screen in the app, not a privacy policy. It answers the question the user actually has: *what is this going to do to my phone?*
 
 
 ## Appendix — Dependency approval queue
