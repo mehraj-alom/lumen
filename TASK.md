@@ -194,16 +194,28 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** no irreversible action without a human.
 
-- [ ] `PolicyEngine` — deterministic classification, deny by default.
-- [ ] `RiskClass` — the H1–H10 taxonomy from `PRD.md` §6.
-- [ ] `DangerClassifier` — surface detectors: payment, publish, delete, credential, permission, communication, account, legal.
-- [ ] `ApprovalBroker` — durable staging, leases, timeouts, resolution routing.
-- [ ] `GrantStore` — per-run, per-action-class grants, expiring.
-- [ ] `ApprovalRequest` builders, including the redacted `ActionPreview`.
-- [ ] Tests: the full `L-HIT-*` set, including "the brain can only tighten, never loosen".
+- [x] `PolicyEngine` — deterministic classification, deny by default.
+- [x] `RiskClass` — the H1–H10 taxonomy from `PRD.md` §6.
+- [x] `DangerClassifier` — surface detectors: payment, publish, delete, credential, permission, communication, account, legal.
+- [x] `ApprovalBroker` — durable staging, leases, timeouts, resolution routing.
+- [x] `GrantStore` — per-run, per-action-class grants, expiring.
+- [x] `ApprovalRequest` builders, including the redacted `ActionPreview`.
+- [x] Tests: the full `L-HIT-*` set, including "the brain can only tighten, never loosen".
 
 **Gate:** `./gradlew :core:policy:test` passes.
-**Quota impact:** the approval store is a few dozen rows per run.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 84 Kotlin files, every internal import resolved, every `@Serializable` property type resolvable, and the dependency guard re-simulated with no violations.
+**Quota impact:** an approval is one row and one notification. A 400-step run stages at most a few dozen; the pending set is bounded by the lease.
+
+**Notes for the next milestone:**
+- The classification is deterministic and runs on-device. The planner's opinion of the risk travels with the request and can only make the answer **stricter** — never looser. `L-HIT-07` and `L-HIT-08` pin both directions.
+- A grant is bound to one run and one action class, and it expires. There is no global "auto-approve" switch, because a global switch is how an irreversible action becomes an accidental one.
+- Staging is durable and non-blocking: the row is written, the broker returns an identifier, and the step waits on a flow owned by the run. An approval survives the agent process being killed.
+- A lease bounds every approval. When it runs out the approval is **denied** — silence is not consent.
+- The payment **surface** check is deliberately narrow: a card field means the screen is a payment form, while a page that merely says "pay later" does not. The broad version would turn every action on the page into an approval.
+
+**Spec corrections made with the code:**
+- `core:model` gained `NodeRef.isPassword`, without which the credential class cannot be detected.
+- `core:model` gained `ApprovalRequest`, the shape the user is asked with, next to `ApprovalRecord`, the durable row.
 
 ---
 

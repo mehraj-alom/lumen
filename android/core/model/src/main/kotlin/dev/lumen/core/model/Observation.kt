@@ -31,6 +31,7 @@ public data class NodeRef(
     val focused: Boolean = false,
     val checkable: Boolean = false,
     val checked: Boolean = false,
+    val isPassword: Boolean = false,
     val depth: Int = 0,
 )
 

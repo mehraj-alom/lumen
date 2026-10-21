@@ -12,10 +12,11 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.serialization.json)
     implementation(project(":core:model"))
-    implementation(project(":core:action"))
+    implementation(project(":core:grounding"))
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
     testImplementation(kotlin("test"))
+    testImplementation(testFixtures(project(":core:grounding")))
 }

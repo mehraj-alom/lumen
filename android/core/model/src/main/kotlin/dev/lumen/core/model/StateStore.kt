@@ -59,6 +59,29 @@ public interface StateStore {
     public suspend fun saveSetting(key: String, value: String)
 }
 
+/**
+ * A pending approval, as it is presented to the person who has to decide.
+ *
+ * The request answers three questions without the user having to think: what
+ * is about to happen, where, and what cannot be undone. The preview is
+ * redacted — it shows the shape of the action, not the whole of the content.
+ */
+@Serializable
+public data class ApprovalRequest(
+    val runId: RunId,
+    val approvalId: ApprovalId,
+    val stepId: StepId,
+    val riskClass: RiskClass,
+    val title: String,
+    val detail: String,
+    val app: String,
+    val appLabel: String,
+    val consequences: List<String>,
+    val actionPreview: ActionPreview,
+    val expiresAtMs: Long,
+    val leaseSeconds: Int,
+)
+
 /** A durable record of a pending or resolved approval. */
 public data class ApprovalRecord(
     val id: ApprovalId,
