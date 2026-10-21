@@ -114,16 +114,19 @@
 
 ### 4.2 Settle detection
 
+The detector watches two independent signals: the **event clock** and the **shape of the tree**. The event clock says "the screen is not emitting events"; the tree shape says "the screen is not changing structure". Either one alone is a guess.
+
 | ID | Test | Asserts |
 |---|---|---|
-| T-SET-01 | `givenEventThenQuiet_whenAwaiting_thenReturnsAfter160ms` | — |
-| T-SET-02 | `givenNoEventAtAll_whenAwaiting_thenReturnsAfter90ms` | — |
-| T-SET-03 | `givenContinuousEvents_whenAwaiting_thenReturnsAtTheCap` | 1,500 ms scroll / 2,000 ms non-scroll |
-| T-SET-04 | `givenStableNodeCount_whenAwaiting_thenReturnsEarly` | The ≤2 delta rule fires |
+| T-SET-01 | `givenEventThenQuiet_whenAwaiting_thenReturnsAfter160ms` | The quiet window is measured from the last event |
+| T-SET-02 | `givenNoEventAtAll_whenAwaiting_thenReturnsAfter90ms` | The no-change window is measured from the start of the wait |
+| T-SET-03 | `givenContinuousEvents_whenAwaiting_thenReturnsAtTheCap` | — |
+| T-SET-04 | `givenStableNodeCount_whenAwaiting_thenReturnsEarly` | The shape signal fires even while events continue |
 | T-SET-05 | `givenChurningNodeCount_whenAwaiting_thenDoesNotReturnEarly` | — |
 | T-SET-06 | `givenStaleCachedTree_whenReturning_thenRefreshesInstead` | The 150 ms guard |
-| T-SET-07 | `givenScrollEvent_whenAwaiting_thenUsesTheScrollClock` | Separate clocks |
+| T-SET-07 | `givenScrollEvent_whenAwaiting_thenUsesTheScrollClock` | A scroll uses the scroll clock and the 1,500 ms cap |
 | T-SET-08 | `givenCancellation_whenAwaiting_thenReturnsPromptly` | — |
+| T-SET-09 | `givenRandomEventPatterns_whenAwaiting_thenAlwaysReturnsWithinTheCap` | The property: the detector never overruns its cap |
 
 ### 4.3 Action dispatch
 

@@ -263,6 +263,8 @@ The detector is driven by an event clock maintained by the accessibility layer, 
 
 The detector is **pure** in `core/grounding` — it consumes an abstract `UiEventClock`, so it is unit-testable on the JVM with a synthetic clock.
 
+**Two clocks, and the reason they are separate.** The *no-change* window is measured from the start of the wait: an event that never arrives is itself the signal that nothing happened. The *quiet* window is measured from the last event: a screen that keeps emitting events has not settled, however long the wait has been. The *tree-shape* window is also measured from the start of the wait, which is what makes it reachable: a screen that keeps emitting events but keeps the same shape is stable, and the detector recognises that instead of waiting for the cap.
+
 ### 4.3 Ground truth precedence
 
 1. **Accessibility tree** — primary. Cheap, structured, always available.

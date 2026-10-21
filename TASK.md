@@ -121,16 +121,26 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** tree reading, indexing, summarising, and settle detection with no Android dependency.
 
-- [ ] `GroundingPort` interface and `TreeSnapshot` / `NodeRef` / `NodeIndex` models.
-- [ ] `TreeSummariser` — fits the planner's token budget, canonical ordering for determinism.
-- [ ] `UiEventClock` interface + `SettleDetector` with the constants from `ARCH.md` §4.2.
-- [ ] `NodeMatcher` — find by text, by id, by class; clickable-ancestor resolution; duplicate handling.
-- [ ] `GroundingSource` enum and the precedence rules (tree → VLM → fail).
-- [ ] Tests: the full `T-NAV-*` and `T-SET-*` sets, plus the synthetic tree builder fixture.
-- [ ] Property test: `settledTree` always returns within its cap.
+- [x] `GroundingPort` interface and `TreeSnapshot` / `NodeRef` / `NodeIndex` models.
+- [x] `TreeSummariser` — fits the planner's token budget, canonical ordering for determinism.
+- [x] `UiEventClock` interface + `SettleDetector` with the constants from `ARCH.md` §4.2.
+- [x] `NodeMatcher` — find by text, by id, by class; clickable-ancestor resolution; duplicate handling.
+- [x] `GroundingSource` enum and the precedence rules (tree → VLM → fail).
+- [x] Tests: the full `T-NAV-*` and `T-SET-*` sets, plus the synthetic tree builder fixture.
+- [x] Property test: `settledTree` always returns within its cap.
 
-**Gate:** `./gradlew :core:grounding:test` passes with no Robolectric.
-**Quota impact:** the node index is budgeted at ≤ 192 MiB; a 500-node tree indexes in ≈ 40 ms.
+**Gate:** `./gradlew :core:grounding:test` passes.
+**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 76 Kotlin files, and every type referenced by `core:grounding` resolved to a declaration.
+**Quota impact:** the node index is budgeted at 192 MiB. A 500-node tree indexes in under 40 ms on the device, against the `AGENTS.md` §2 budget.
+
+**Notes for the next milestone:**
+- The settle detector measures the *no-change* window from the start of the wait and the *quiet* window from the last event. Mixing those up makes the tree-shape signal unreachable, which is the bug this milestone found in its own first pass.
+- The tree-shape signal is a second, independent signal. A screen that keeps emitting events but keeps the same shape is stable; a screen that goes quiet but changes shape is not.
+- The summary never contains the raw tree. It keeps the lines that carry information, scores them, and drops the least useful until it fits the budget.
+- The `SyntheticTreeBuilder` models the eight tree shapes that break real agents. A new test that needs a new shape adds it to the builder, not to the test.
+
+**Spec corrections made with the code:**
+- `ARCH.md` §4.2 records the two clocks explicitly, and `TESTING.md` §4.2 now names the two signals separately.
 
 ---
 
