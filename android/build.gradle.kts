@@ -170,6 +170,10 @@ val dependencyGuard by tasks.registering {
     group = "verification"
     description = "Enforces the core module boundary and the dependency approval ledger."
 
+    // The task reads the build files at execution time, so it cannot be
+    // serialised into the configuration cache. The rest of the build keeps it.
+    notCompatibleWithConfigurationCache("Reads the build files at execution time.")
+
     val projectDir = rootDir
     val approved = rootProject.file("gradle/approved-dependencies.txt")
     val pending = rootProject.file("gradle/pending-dependencies.txt")
@@ -250,6 +254,8 @@ val dependencyGuard by tasks.registering {
 val dependencyLedger by tasks.registering {
     group = "verification"
     description = "Checks that every declared dependency is documented in the TECHSTACK.md ledger."
+
+    notCompatibleWithConfigurationCache("Reads the build files at execution time.")
 
     val projectDir = rootDir
     val specLedger = rootProject.file("../TECHSTACK.md")
