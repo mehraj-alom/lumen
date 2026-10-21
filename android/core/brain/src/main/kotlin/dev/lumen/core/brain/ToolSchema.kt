@@ -351,7 +351,7 @@ public object ActionCodec {
         (this[key] as? JsonPrimitive)?.intOrNull
 
     private fun JsonObject.long(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.let { it.longOrNull() ?: it.doubleOrNull()?.toLong() }
+        (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }
 
     private fun JsonObject.rect(key: String): RelativeRect? {
         val values = (this[key] as? JsonArray)?.mapNotNull {

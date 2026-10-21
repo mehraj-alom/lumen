@@ -60,7 +60,8 @@ public class TreeSummariser(
         return buildString {
             append("  ".repeat(node.depth.coerceIn(0, MAX_DEPTH)))
             append(node.className.substringAfterLast('.'))
-            if (node.viewId != null) append('#').append(node.viewId.substringAfterLast('/'))
+            val viewId = node.viewId
+            if (viewId != null) append('#').append(viewId.substringAfterLast('/'))
             if (label != null) append(" \"").append(label.take(MAX_LABEL)).append('"')
             if (node.clickable) append(" [clickable]")
             if (node.editable) append(" [editable]")

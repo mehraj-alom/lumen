@@ -22,6 +22,18 @@ plugins {
 val lumenRoot = rootProject.layout.projectDirectory.dir("..").asFile
 
 subprojects {
+    // The Kotlin compiler cannot read a stdlib compiled by a newer Kotlin.
+    // A transitive dependency must not be able to drag the stdlib past the
+    // pinned version.
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.jetbrains.kotlin" && requested.name == "kotlin-stdlib") {
+                useVersion(rootProject.libs.versions.kotlin.get())
+                because("the pinned Kotlin compiler cannot read a newer stdlib's metadata")
+            }
+        }
+    }
+
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     apply(plugin = "io.gitlab.arturbosch.detekt")
 
