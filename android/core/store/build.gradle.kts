@@ -35,8 +35,14 @@ android {
     }
 }
 
+// The Room plugin wants the schema location in its own DSL, not as a KSP
+// argument. The schema is committed, so the next migration has something to
+// migrate from.
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.generateKotlin", "true")
 }
 
