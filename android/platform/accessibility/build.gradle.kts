@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -10,6 +11,11 @@ android {
     defaultConfig {
         minSdk = 26
         testOptions.targetSdk = 35
+    }
+
+    buildFeatures {
+        aidl = true
+        buildConfig = false
     }
 
     compileOptions {
@@ -22,12 +28,15 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
+    implementation(libs.serialization.json)
     implementation(libs.androidx.core.ktx)
+
     implementation(project(":core:model"))
-    implementation(project(":core:action"))
     implementation(project(":core:grounding"))
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
 }

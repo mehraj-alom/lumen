@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The accessibility service configuration.
+
+    The capability set is the one the agent needs, and the reason the
+    permission is worth granting:
+      - typeAllMask                 the agent reads whatever is on screen
+      - flagReportViewIds           nodes carry their view id, so the agent
+                                    can target a control rather than a point
+      - flagRetrieveInteractiveWindows  other apps' windows are visible, so a
+                                    dialog over the app is not missed
+      - flagIncludeNotImportantViews    content marked unimportant is still read
+      - canPerformGestures          the agent can act, not only observe
+      - canTakeScreenshot           the spectating view needs no MediaProjection
+                                    consent dialog
+      - notificationTimeout 40      the event storm is throttled at source
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="40"
+    android:summary="@string/accessibility_service_summary" />

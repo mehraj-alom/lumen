@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">LUMEN</string>
+    <string name="accessibility_service_summary">Lets LUMEN read the screen and perform taps, swipes and typing on your behalf, so it can carry out a task you have asked for.</string>
+    <string name="accessibility_service_description">LUMEN uses this service to read what is on screen and to tap, swipe and type on your behalf while it carries out a task you have started. It shows an indicator on screen whenever it is working, and it asks you before anything irreversible. You can turn the service off at any time in Android settings, and LUMEN stops immediately.</string>
+</resources>

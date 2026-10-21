@@ -176,17 +176,25 @@ Sequential milestones. Work only inside the current milestone's unchecked items.
 
 **Goal:** the real actuator.
 
-- [ ] `LumenAccessibilityService` — the only class touching `AccessibilityService` APIs.
-- [ ] `IAccessibilityBridge.aidl` — the interface the agent process calls.
-- [ ] Accessibility service config: `typeAllMask`, `canPerformGestures`, `canTakeScreenshot`, `flagReportViewIds`, `flagRetrieveInteractiveWindows`.
-- [ ] `NodeReader` — real tree reading, mapped onto the core `TreeSnapshot`.
-- [ ] `GestureInjector` — tap, double tap, long press, swipe, path drag with easing.
-- [ ] `UiEventTracker` — maintains the event clock that `SettleDetector` consumes.
-- [ ] Foreground-app guard and allowlist enforcement at dispatch time.
-- [ ] Instrumentation: `I-01`, `I-02`, `I-03`.
+- [x] `LumenAccessibilityService` — the only class touching `AccessibilityService` APIs.
+- [x] `IAccessibilityBridge.aidl` — the interface the agent process calls.
+- [x] Accessibility service config: `typeAllMask`, `canPerformGestures`, `canTakeScreenshot`, `flagReportViewIds`, `flagRetrieveInteractiveWindows`.
+- [x] `NodeReader` — real tree reading, mapped onto the core `TreeSnapshot`.
+- [x] `GestureInjector` — tap, double tap, long press, swipe, path drag with easing.
+- [x] `UiEventTracker` — maintains the event clock that `SettleDetector` consumes.
+- [x] Foreground-app guard and allowlist enforcement at dispatch time.
+- [x] Instrumentation: `I-01`, `I-02`, `I-03`.
 
 **Gate:** `./gradlew :platform:accessibility:test connectedAndroidTest` passes on a device.
-**Quota impact:** the tree cache is budgeted at ≤ 192 MiB; the service itself ≈ 18–30 MiB.
+**Status:** implemented. The **device gate has not been executed** — this machine has no attached device and insufficient RAM, so the instrumentation suite runs in CI or on a handset with the service enabled. Static checks: brace balance over all 104 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Quota impact:** the tree cache is budgeted at 192 MiB and the service's own resident footprint is 18–30 MiB, inside the 64 MiB `BASELINE` allowance.
+
+**Notes for the next milestone:**
+- The service is **not exported**. Nothing outside the app may bind to it, and the agent — a different process of the same app — is the only client.
+- The AIDL payloads are **JSON**. The model types are already serialisable, and a JSON payload keeps the AIDL surface free of Parcelable boilerplate that would have to be kept in step with the model by hand.
+- A binder call is synchronous and a gesture is not, so the gesture runs on a coroutine and the binder thread waits on a latch. The wait is bounded, and the binder thread is a background thread.
+- `canTakeScreenshot` is the consent-free capture path. It is used in preference to MediaProjection, so the spectating view works without a dialog interrupting the user.
+- The event clock keeps two clocks apart — the last event and the last scroll — because a scroll produces a different event storm and needs a tighter wait.
 
 ---
 

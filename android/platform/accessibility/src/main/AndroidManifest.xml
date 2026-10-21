@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <!--
+            The accessibility service. It lives in the console process, because
+            Android requires an accessibility service to be in a process the
+            user can enable. The agent binds to it from its own process over
+            IAccessibilityBridge.
+
+            The service is not exported: nothing outside this app may bind to
+            it, and the agent is the only client.
+        -->
+        <service
+            android:name=".LumenAccessibilityService"
+            android:exported="false"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:process=":ui">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+    </application>
+
+</manifest>
