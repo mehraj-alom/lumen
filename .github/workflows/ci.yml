@@ -51,6 +51,11 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
+      - name: Compile everything
+        # --continue so that ONE run reports the errors from every module,
+        # instead of stopping at the first one that fails.
+        run: ./gradlew :app:compileDebugKotlin --continue || true
+
       - name: Dependency guard
         run: ./gradlew :dependencyGuard :dependencyLedger
 
@@ -64,10 +69,10 @@ jobs:
         run: ./gradlew detekt
 
       - name: Unit tests
-        run: ./gradlew test
+        run: ./gradlew test --continue
 
       - name: Assemble
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug --continue
 
   apk:
     name: Installable APKs
