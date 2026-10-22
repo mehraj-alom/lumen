@@ -3,7 +3,7 @@ package dev.lumen.core.agent.fixtures
 import dev.lumen.core.agent.ApprovalSignal
 import dev.lumen.core.agent.StepEnvironment
 import dev.lumen.core.model.Action
-import dev.lumen.core.model.ActionResult
+import dev.lumen.core.action.ActionResult
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.ErrorCode
