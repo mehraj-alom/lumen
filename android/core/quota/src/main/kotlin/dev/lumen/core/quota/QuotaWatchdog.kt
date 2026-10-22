@@ -9,7 +9,7 @@ package dev.lumen.core.quota
  * merely observed (invariant I10).
  */
 public class QuotaWatchdog(
-    private val budget: RamBudget,
+    public val budget: RamBudget,
     private val probe: MemoryProbe,
     private val onEscalation: (Escalation) -> Unit = {},
     private val onHardStop: (HardStop) -> Unit = {},
@@ -28,6 +28,9 @@ public class QuotaWatchdog(
     public fun unregister(category: RamCategory): Unit = synchronized(lock) {
         evictables.remove(category)
     }
+
+    /** A report of the budget. */
+    public fun snapshot(): RamSnapshot = budget.snapshot()
 
     /** The most recent tick, or null when the watchdog has not run yet. */
     public fun lastTick(): QuotaTick? = synchronized(lock) { lastTick }

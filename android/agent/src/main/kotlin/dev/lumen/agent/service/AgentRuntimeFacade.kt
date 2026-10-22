@@ -12,6 +12,7 @@ import dev.lumen.core.agent.RunState
 import dev.lumen.core.agent.StepEnvironment
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalState
+import dev.lumen.core.model.Phase
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.ApprovalDecision
 import dev.lumen.core.policy.PolicyEngine
@@ -201,35 +202,49 @@ public class AgentRuntimeFacade(
      * durable store rather than pushed.
      */
     private fun approvalSignal(): ApprovalSignal = ApprovalSignal { approvalId ->
+        awaitApproval(approvalId)
+    }
+
+    /**
+     * Waits for an approval to be decided.
+     *
+     * The decision is read back from the durable store, because it may arrive
+     * from another process — the glass card, the notification, or the web
+     * console.
+     */
+    private suspend fun awaitApproval(approvalId: dev.lumen.core.model.ApprovalId): ApprovalState {
         while (true) {
-            val record = store.loadApproval(approvalId)
-            if (record == null) return@ApprovalSignal ApprovalState.EXPIRED
+            val record = store.loadApproval(approvalId) ?: return ApprovalState.EXPIRED
             if (record.state != ApprovalState.PENDING) {
-                service?.publishApproval(
-                    ApprovalPayload(
-                        runId = record.runId.value,
-                        approvalId = record.id.value,
-                        stepId = record.stepId.value,
-                        riskClass = record.riskClass.name,
-                        title = record.title,
-                        detail = record.detail,
-                        app = record.app,
-                        appLabel = record.appLabel,
-                        consequences = record.consequences,
-                        actionPreview = PreviewPayload(
-                            kind = record.actionPreview.kind,
-                            label = record.actionPreview.label,
-                            text = record.actionPreview.text,
-                            target = record.actionPreview.target,
-                        ),
-                        expiresAtMs = record.leaseExpiresAtMs,
-                        leaseSeconds = ((record.leaseExpiresAtMs - record.createdAtMs) / 1000L).toInt(),
-                    ),
-                )
-                return@ApprovalSignal record.state
+                publishApproval(record)
+                return record.state
             }
             delay(APPROVAL_POLL_MS)
         }
+    }
+
+    private fun publishApproval(record: dev.lumen.core.model.ApprovalRecord) {
+        service?.publishApproval(
+            ApprovalPayload(
+                runId = record.runId.value,
+                approvalId = record.id.value,
+                stepId = record.stepId.value,
+                riskClass = record.riskClass.name,
+                title = record.title,
+                detail = record.detail,
+                app = record.app,
+                appLabel = record.appLabel,
+                consequences = record.consequences,
+                actionPreview = PreviewPayload(
+                    kind = record.actionPreview.kind,
+                    label = record.actionPreview.label,
+                    text = record.actionPreview.text,
+                    target = record.actionPreview.target,
+                ),
+                expiresAtMs = record.leaseExpiresAtMs,
+                leaseSeconds = ((record.leaseExpiresAtMs - record.createdAtMs) / 1000L).toInt(),
+            ),
+        )
     }
 
     public companion object {

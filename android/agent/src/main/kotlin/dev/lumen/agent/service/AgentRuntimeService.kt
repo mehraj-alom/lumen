@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -47,7 +46,7 @@ public class AgentRuntimeService : android.app.Service() {
     private val frameCallbacks = mutableListOf<IAgentFrameCallback>()
     private val callbackLock = Any()
 
-    private val binder = object : Binder(), IAgentRuntime.Stub() {
+    private val binder = object : IAgentRuntime.Stub() {
 
         override fun startGoal(goalJson: String?): String {
             val payload = goalJson?.let { parseGoal(it) } ?: return ""
@@ -94,11 +93,22 @@ public class AgentRuntimeService : android.app.Service() {
 
         override fun getState(runId: String?): String {
             val state = runtime?.state(runId.orEmpty())
+                ?: return json.encodeToString(
+                    dev.lumen.agent.ipc.AgentStatePayload.serializer(),
+                    dev.lumen.agent.ipc.AgentStatePayload(runId = runId.orEmpty(), phase = "IDLE"),
+                )
             return json.encodeToString(dev.lumen.agent.ipc.AgentStatePayload.serializer(), state)
         }
 
         override fun getBudget(runId: String?): String {
             val budget = runtime?.budget(runId.orEmpty())
+                ?: dev.lumen.agent.ipc.BudgetPayload(
+                    ramUsedMiB = 0, ramLimitMiB = 2_048,
+                    storageUsedMiB = 0L, storageLimitMiB = 20_000L,
+                    stepsUsed = 0, stepsSoftLimit = 150, stepsHardLimit = 400,
+                    elapsedMs = 0L, wallClockLimitMs = 45L * 60L * 1000L,
+                    costMicros = 0L, costLimitMicros = 0L,
+                )
             return json.encodeToString(dev.lumen.agent.ipc.BudgetPayload.serializer(), budget)
         }
 
