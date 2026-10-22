@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- STYLE_GUIDE.md §2.1 — the console background. -->
-    <color name="void">#FF07090F</color>
+    <color name="lumen_void">#FF07090F</color>
     <color name="abyss">#FF0C1018</color>
 </resources>

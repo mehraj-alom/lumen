@@ -15,7 +15,7 @@ public interface RunDao {
     @Query("SELECT * FROM runs WHERE id = :runId")
     public suspend fun find(runId: String): RunEntity?
 
-    @Query("SELECT * FROM runs ORDER BY created_at DESC")
+    @Query("SELECT * FROM runs ORDER BY created_at DESC LIMIT :limit")
     public suspend fun recent(limit: Int): List<RunEntity>
 }
 
