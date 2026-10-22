@@ -5,6 +5,7 @@ import dev.lumen.core.model.RunId
 import dev.lumen.core.sandbox.SandboxPath
 import dev.lumen.core.sandbox.WorkspaceManager
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /** One line of an execution trace. */

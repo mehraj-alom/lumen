@@ -13,14 +13,16 @@ import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RelativePoint
 import dev.lumen.platform.overlay.toIndicatorMode
 import dev.lumen.platform.overlay.toIndicatorState
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * The accessibility service.

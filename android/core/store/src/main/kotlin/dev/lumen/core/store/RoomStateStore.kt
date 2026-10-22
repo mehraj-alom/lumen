@@ -1,5 +1,6 @@
 package dev.lumen.core.store
 
+import androidx.room.withTransaction
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalRecord
 import dev.lumen.core.model.ApprovalState
@@ -16,7 +17,8 @@ import dev.lumen.core.model.StateStore
 import dev.lumen.core.model.Step
 import dev.lumen.core.model.StepId
 import dev.lumen.core.model.StepState
-import androidx.room.withTransaction
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**

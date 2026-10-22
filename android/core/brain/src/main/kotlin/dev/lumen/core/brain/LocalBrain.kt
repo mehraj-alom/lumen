@@ -3,6 +3,7 @@ package dev.lumen.core.brain
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.RiskClass
 import dev.lumen.core.model.Verdict
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 /**

@@ -1,6 +1,8 @@
 package dev.lumen.core.model
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Test
 

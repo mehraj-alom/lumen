@@ -8,11 +8,13 @@ import android.os.IBinder
 import android.util.Log
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.Observation
+import kotlin.coroutines.resume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.coroutines.resume
 
 /**
  * The agent's client for the accessibility service.

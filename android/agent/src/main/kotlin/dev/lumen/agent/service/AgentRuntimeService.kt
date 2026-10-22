@@ -14,13 +14,15 @@ import dev.lumen.agent.ipc.IAgentFrameCallback
 import dev.lumen.agent.ipc.IAgentRuntime
 import dev.lumen.agent.ipc.IAgentStateCallback
 import dev.lumen.core.agent.RunState
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The agent runtime service.
