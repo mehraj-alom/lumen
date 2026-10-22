@@ -98,7 +98,8 @@ public class LocalBrain(
         }
 
         val steps = envelope.steps.mapNotNull { step ->
-            val action: Action = ActionCodec.decode(step.action.tool, step.action.args) ?: return null
+            val action: Action = ActionCodec.decode(step.action.tool, step.action.args)
+                ?: return@mapNotNull null
             PlannedStep(
                 seq = step.seq,
                 intent = step.intent,

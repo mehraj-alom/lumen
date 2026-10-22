@@ -27,6 +27,19 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!--
+            The bridge service. The agent process binds to this to reach the
+            accessibility bridge, because AccessibilityService.onBind is final
+            and cannot hand out its own binder.
+
+            It is not exported: only the agent, which is another process of
+            this same application, may bind to it.
+        -->
+        <service
+            android:name=".AccessibilityBridgeService"
+            android:exported="false"
+            android:process=":ui" />
+
     </application>
 
 </manifest>

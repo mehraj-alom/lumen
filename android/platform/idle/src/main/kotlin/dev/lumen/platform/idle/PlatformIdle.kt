@@ -28,28 +28,27 @@ public class PlatformScreenState(context: Context) : ScreenStateSource {
  * accessibility events, which a swipe may not produce.
  */
 public interface TouchSource {
-    /** The time of the last raw touch, or null. */
+    /** The time of the last touch, or null. */
     public fun lastTouchMs(): Long?
 }
 
 /**
- * The platform touch source.
+ * The platform touch source, backed by the accessibility event clock.
  *
- * `InputManager.monitorGesture` is the only way to see a raw touch without
- * a window, and it arrived in API 34. Below that the gate falls back to the
- * accessibility event clock, which catches taps and scrolls but can miss a
- * drag.
+ * Android has no public API for a raw touch outside a window:
+ * `InputManager.monitorGesture` and `latestGestureTimestamp` are not public
+ * API. The signal therefore comes from the accessibility event clock, which
+ * sees every tap, scroll and text change.
+ *
+ * The gap is honest and it is documented: a drag that produces no
+ * accessibility event is not seen, so the idle window may expire while the
+ * user is mid-drag. The window is a guard against the common case, not a
+ * proof that nobody is touching the screen.
  */
-public class PlatformTouchSource(context: Context) : TouchSource {
-
-    private val inputManager = context.getSystemService(Context.INPUT_SERVICE) as android.hardware.input.InputManager
-
-    override fun lastTouchMs(): Long? =
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            inputManager.latestGestureTimestamp
-        } else {
-            null
-        }
+public class PlatformTouchSource(
+    private val lastEvent: () -> Long?,
+) : TouchSource {
+    override fun lastTouchMs(): Long? = lastEvent()
 }
 
 /**

@@ -108,15 +108,17 @@ public class AgentRuntimeFactory(
      */
     public fun environment(bridge: AccessibilityBridgeClient): AgentEnvironment {
         val tracker = UiEventTracker()
+        val touchObserver = TouchObserver(clock)
         val gate = IdleGate(
             screenState = PlatformScreenState(context),
-            touchObserver = TouchObserver(clock),
+            touchObserver = touchObserver,
         )
         return AgentEnvironment(
             bridge = bridge,
             idleGate = gate,
             virtualDisplay = VirtualDisplayManager(context),
             eventTracker = tracker,
+            touchObserver = touchObserver,
         )
     }
 

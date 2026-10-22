@@ -47,7 +47,7 @@ public class ApprovalBroker(
      * retried staging cannot collide with an earlier approval.
      */
     public suspend fun stage(request: ApprovalRequest): ApprovalId {
-        val approvalId = ids.next()
+        val approvalId = ApprovalId(ids.next())
         val now = clock.nowMs()
 
         store.saveApproval(

@@ -7,6 +7,7 @@ import dev.lumen.core.model.Observation
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.accessibility.UiEventTracker
 import dev.lumen.platform.idle.IdleGate
+import dev.lumen.platform.idle.TouchObserver
 import dev.lumen.platform.virtualdisplay.SurfaceDecision
 import dev.lumen.platform.virtualdisplay.SurfaceRequest
 import dev.lumen.platform.virtualdisplay.SurfaceSelection
@@ -24,12 +25,29 @@ public class AgentEnvironment(
     private val idleGate: IdleGate,
     private val virtualDisplay: VirtualDisplayManager,
     private val eventTracker: UiEventTracker,
+    private val touchObserver: TouchObserver,
     private val allowlist: () -> Set<String> = { emptySet() },
 ) : StepEnvironment {
 
-    override suspend fun observe(): Observation? = bridge.readTree()
+    override suspend fun observe(): Observation? {
+        refreshTouchSignal()
+        return bridge.readTree()
+    }
+
+    /**
+     * Folds the accessibility event clock into the touch observer.
+     *
+     * Android has no public API for a raw touch outside a window, so the
+     * event clock is the signal that the user is present.
+     */
+    private fun refreshTouchSignal() {
+        val last = eventTracker.lastEventMs() ?: return
+        val known = touchObserver.lastTouchMs()
+        if (known == null || last > known) touchObserver.onTouch(last)
+    }
 
     override suspend fun perform(action: Action): ActionResult {
+        refreshTouchSignal()
         val decision = SurfaceSelection.choose(
             request = SurfaceRequest(
                 packageName = foregroundPackage() ?: "",

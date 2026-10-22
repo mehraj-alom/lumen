@@ -85,7 +85,7 @@ public class NodeReader(
         contentDescription = contentDescription?.toString()?.takeIf { it.isNotBlank() },
         className = className?.toString() ?: "android.view.View",
         packageName = packageName,
-        bounds = boundsInScreen.toRelative(screenWidth, screenHeight),
+        bounds = screenBounds().toRelative(screenWidth, screenHeight),
         clickable = isClickable,
         editable = isEditable,
         scrollable = isScrollable,
@@ -96,6 +96,13 @@ public class NodeReader(
         isPassword = isPassword,
         depth = depth,
     )
+
+    /** The node's bounds on the screen. */
+    private fun AccessibilityNodeInfo.screenBounds(): Rect? {
+        val rect = Rect()
+        getBoundsInScreen(rect)
+        return if (rect.isEmpty) null else rect
+    }
 
     private fun Rect?.toRelative(screenWidth: Int, screenHeight: Int): RelativeRect? {
         if (this == null) return null
@@ -156,15 +163,20 @@ public class ServiceAccessibilityHost(
 
     override fun rootNode(): AccessibilityNodeInfo? = service.rootInActiveWindow
 
-    override fun overlayWindows(): List<AccessibilityWindowInfoCompat> =
-        service.windows.map { window ->
+    override fun overlayWindows(): List<AccessibilityWindowInfoCompat> {
+        // A window does not carry its package name, so the foreground
+        // package stands in for it. The windows that matter are the ones
+        // drawn OVER that package, and the title is what identifies them.
+        val packageName = foregroundPackage().orEmpty()
+        return service.windows.map { window ->
             AccessibilityWindowInfoCompat(
-                packageName = window.id?.packageName?.toString().orEmpty(),
+                packageName = packageName,
                 type = window.type.toString(),
-                title = null,
+                title = window.title?.toString(),
                 bounds = window.bounds,
             )
         }
+    }
 
     override fun screenSize(): Pair<Int, Int> {
         val metrics = service.resources.displayMetrics

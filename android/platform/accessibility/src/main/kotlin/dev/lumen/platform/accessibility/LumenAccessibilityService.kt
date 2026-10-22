@@ -3,7 +3,6 @@ package dev.lumen.platform.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
-import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -11,7 +10,10 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.Observation
+import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RelativePoint
+import dev.lumen.platform.overlay.toIndicatorMode
+import dev.lumen.platform.overlay.toIndicatorState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,11 +44,18 @@ public class LumenAccessibilityService : AccessibilityService() {
     private val listeners = mutableListOf<IAccessibilityListener>()
     private val lock = Any()
 
-    private val bridge = object : Binder(), IAccessibilityBridge.Stub() {
+    /**
+     * The bridge the agent calls.
+     *
+     * `AccessibilityService.onBind` is final, so the bridge cannot be the
+     * service's own binder. It is exposed through a separate bound service,
+     * [AccessibilityBridgeService], in the same process.
+     */
+    public val bridge: IAccessibilityBridge = object : IAccessibilityBridge.Stub() {
 
         override fun readTree(maxNodes: Int): String? {
-            val snapshot = readSnapshot(maxNodes)
-            return snapshot?.let { json.encodeToString(snapshot) }
+            val observation = readSnapshot(maxNodes)
+            return observation?.let { json.encodeToString(Observation.serializer(), it) }
         }
 
         override fun performAction(actionJson: String): Boolean {
@@ -116,8 +125,6 @@ public class LumenAccessibilityService : AccessibilityService() {
             metrics.widthPixels to metrics.heightPixels
         }
     }
-
-    override fun onBind(intent: Intent?): IBinder = bridge
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -263,7 +270,7 @@ public class LumenAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun inputText(text: String): Boolean {
-        val action = ACTION_SET_TEXT
+        val action = android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT
         val bundle = Bundle().apply { putCharSequence(action, text) }
         val node = host.rootNode()?.findFocus(FOCUS_INPUT)
             ?: host.rootNode()?.findAccessibilityNodeInfosByViewId(EDIT_TEXT_ID)?.firstOrNull()
@@ -273,7 +280,7 @@ public class LumenAccessibilityService : AccessibilityService() {
 
     private suspend fun pressEnter(): Boolean {
         val node = host.rootNode()?.findFocus(FOCUS_INPUT) ?: return false
-        return node.performAction(ACTION_CLICK)
+        return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     private suspend fun openApp(packageName: String): Boolean {
@@ -314,9 +321,16 @@ public class LumenAccessibilityService : AccessibilityService() {
             takeScreenshot(
                 android.view.Display.DEFAULT_DISPLAY,
                 mainExecutor,
-                { result ->
-                    path = result?.let { saveCapture(it) }
-                    latch.countDown()
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                        path = saveCapture(result.screenshot)
+                        latch.countDown()
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        path = null
+                        latch.countDown()
+                    }
                 },
             )
         } catch (error: Exception) {
@@ -328,16 +342,20 @@ public class LumenAccessibilityService : AccessibilityService() {
         return path
     }
 
-    private fun saveCapture(screenshot: android.graphics.Bitmap): String? = try {
-        val directory = java.io.File(filesDir, "frames")
-        if (!directory.isDirectory && !directory.mkdirs()) return null
-        val file = java.io.File(directory, "capture-${System.currentTimeMillis()}.png")
-        file.outputStream().use { out -> screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out) }
-        screenshot.recycle()
-        file.absolutePath
-    } catch (error: Exception) {
-        Log.w(TAG, "the capture could not be saved", error)
-        null
+    private fun saveCapture(screenshot: android.graphics.Bitmap): String? {
+        return try {
+            val directory = java.io.File(filesDir, "frames")
+            if (!directory.isDirectory && !directory.mkdirs()) return null
+            val file = java.io.File(directory, "capture-${System.currentTimeMillis()}.png")
+            file.outputStream().use { out ->
+                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            }
+            screenshot.recycle()
+            file.absolutePath
+        } catch (error: Exception) {
+            Log.w(TAG, "the capture could not be saved", error)
+            null
+        }
     }
 
     private fun notifyListeners(notify: (IAccessibilityListener) -> Unit) {
@@ -348,8 +366,6 @@ public class LumenAccessibilityService : AccessibilityService() {
     public companion object {
         private const val TAG = "LumenAccessibility"
 
-        private const val ACTION_SET_TEXT = "android.view.accessibility.action.ACTION_SET_TEXT"
-        private const val ACTION_CLICK = "android.view.accessibility.action.ACTION_CLICK"
         private const val FOCUS_INPUT = android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT
         private const val EDIT_TEXT_ID = "android:id/edit"
 

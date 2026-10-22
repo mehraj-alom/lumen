@@ -80,7 +80,6 @@ public class GestureInjector(
                     screenPath,
                     0L,
                     durationMs,
-                    GestureDescription.StrokeDescription.CAP_ROUND,
                 ),
             )
             .build()
@@ -110,7 +109,6 @@ public class GestureInjector(
                     path,
                     0L,
                     durationMs,
-                    GestureDescription.StrokeDescription.CAP_ROUND,
                 ),
             )
             .build()
@@ -122,13 +120,11 @@ public class GestureInjector(
     private suspend fun dispatch(gesture: GestureDescription): Boolean =
         suspendCancellableCoroutine { continuation ->
             val callback = object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: AccessibilityService.GestureDescription?) {
+                override fun onCompleted(gestureDescription: GestureDescription) {
                     if (continuation.isActive) continuation.resume(true)
                 }
 
-                override fun onCancelled(
-                    gestureDescription: AccessibilityService.GestureDescription?,
-                ) {
+                override fun onCancelled(gestureDescription: GestureDescription) {
                     if (continuation.isActive) continuation.resume(false)
                 }
             }
@@ -212,7 +208,6 @@ public class UiEventTracker : UiEventClock {
 
     private fun isScroll(event: AccessibilityEvent): Boolean = when (event.eventType) {
         AccessibilityEvent.TYPE_VIEW_SCROLLED -> true
-        AccessibilityEvent.TYPE_SCROLL_LIST -> true
         else -> false
     }
 }
