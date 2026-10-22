@@ -10,7 +10,6 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.Observation
-import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RelativePoint
 import dev.lumen.platform.overlay.toIndicatorMode
 import dev.lumen.platform.overlay.toIndicatorState
@@ -271,7 +270,8 @@ public class LumenAccessibilityService : AccessibilityService() {
 
     private suspend fun inputText(text: String): Boolean {
         val action = android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT
-        val bundle = Bundle().apply { putCharSequence(action, text) }
+        val key = "android.view.accessibility.action.ACTION_SET_TEXT"
+        val bundle = Bundle().apply { putCharSequence(key, text) }
         val node = host.rootNode()?.findFocus(FOCUS_INPUT)
             ?: host.rootNode()?.findAccessibilityNodeInfosByViewId(EDIT_TEXT_ID)?.firstOrNull()
             ?: return false
@@ -323,7 +323,7 @@ public class LumenAccessibilityService : AccessibilityService() {
                 mainExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
-                        path = saveCapture(result.screenshot)
+                        path = saveCapture(result)
                         latch.countDown()
                     }
 
@@ -342,15 +342,26 @@ public class LumenAccessibilityService : AccessibilityService() {
         return path
     }
 
-    private fun saveCapture(screenshot: android.graphics.Bitmap): String? {
+    /**
+     * Saves a screenshot.
+     *
+     * The accessibility API hands back a hardware buffer, not a bitmap, and
+     * the buffer is only readable when the platform made it CPU-readable. A
+     * buffer that cannot be wrapped is not a failure of the capture, so it is
+     * reported as "no frame" rather than as an error.
+     */
+    private fun saveCapture(result: AccessibilityService.ScreenshotResult): String? {
         return try {
+            val buffer = result.hardwareBuffer ?: return null
+            val bitmap = android.graphics.Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+
             val directory = java.io.File(filesDir, "frames")
             if (!directory.isDirectory && !directory.mkdirs()) return null
             val file = java.io.File(directory, "capture-${System.currentTimeMillis()}.png")
             file.outputStream().use { out ->
-                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
             }
-            screenshot.recycle()
+            bitmap.recycle()
             file.absolutePath
         } catch (error: Exception) {
             Log.w(TAG, "the capture could not be saved", error)

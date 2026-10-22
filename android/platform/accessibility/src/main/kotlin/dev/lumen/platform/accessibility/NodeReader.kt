@@ -169,11 +169,13 @@ public class ServiceAccessibilityHost(
         // drawn OVER that package, and the title is what identifies them.
         val packageName = foregroundPackage().orEmpty()
         return service.windows.map { window ->
+            val rect = android.graphics.Rect()
+            window.getBoundsInScreen(rect)
             AccessibilityWindowInfoCompat(
                 packageName = packageName,
                 type = window.type.toString(),
                 title = window.title?.toString(),
-                bounds = window.bounds,
+                bounds = if (rect.isEmpty) null else rect,
             )
         }
     }

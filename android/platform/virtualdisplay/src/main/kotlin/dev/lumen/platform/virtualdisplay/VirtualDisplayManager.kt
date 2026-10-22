@@ -1,8 +1,8 @@
 package dev.lumen.platform.virtualdisplay
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -25,10 +25,10 @@ import android.util.Log
 public class VirtualDisplayManager(private val context: Context) {
 
     private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-    private val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
 
     private val lock = Any()
     private val displays = mutableMapOf<Int, VirtualDisplay>()
+    private val placements = mutableMapOf<Int, String>()
 
     /** The number of private displays that are currently open. */
     public fun openDisplayCount(): Int = synchronized(lock) { displays.size }
@@ -48,6 +48,7 @@ public class VirtualDisplayManager(private val context: Context) {
             widthPx,
             heightPx,
             densityDpi,
+            null,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             null,
             null,
@@ -68,19 +69,22 @@ public class VirtualDisplayManager(private val context: Context) {
      * than a failure.
      */
     public fun canHost(packageName: String): Boolean {
-        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
         val component = intent.component ?: return false
 
         val info = try {
-            packageManager.getActivityInfo(component, PackageManager.GET_META_DATA)
+            context.packageManager.getActivityInfo(component, PackageManager.GET_META_DATA)
         } catch (error: PackageManager.NameNotFoundException) {
             return false
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            if (!info.isResizeableMode) return false
-        }
-        if (info.excludeFromRecents) return false
+        // The activity has to be able to live on a secondary display, and it
+        // must not be excluded from recents, or the user would lose it.
+        val resizeable = info.flags and (
+            ActivityInfo.FLAG_RESIZEABLE_FOR_SCREENS or ActivityInfo.FLAG_RESIZEABLE_ACTIVITY
+            ) != 0
+        if (!resizeable) return false
+        if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) return false
         return true
     }
 
@@ -102,6 +106,7 @@ public class VirtualDisplayManager(private val context: Context) {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             context.startActivity(intent, options.toBundle())
+            recordPlacement(packageName, displayId)
             true
         } catch (error: Exception) {
             Log.w(TAG, "the app could not be launched on the private display", error)
@@ -110,18 +115,18 @@ public class VirtualDisplayManager(private val context: Context) {
     }
 
     /**
-     * Whether the task of [packageName] is on the display with [displayId].
+     * Whether [packageName] was launched onto the display with [displayId].
+     *
+     * Android has no public API for the display a task is on, so this is the
+     * manager's own record of what it did. It is what the agent needs: it
+     * wants to know where it put the app, not what the platform thinks.
      */
-    public fun isTaskOn(packageName: String, displayId: Int): Boolean {
-        val tasks = try {
-            activityManager.appTasks
-        } catch (error: Exception) {
-            return false
-        }
-        return tasks.any { task ->
-            task.taskInfo.displayId == displayId &&
-                task.taskInfo.baseIntent?.packageName == packageName
-        }
+    public fun isTaskOn(packageName: String, displayId: Int): Boolean =
+        synchronized(lock) { placements[displayId] == packageName }
+
+    /** Records that [packageName] was launched onto [displayId]. */
+    private fun recordPlacement(packageName: String, displayId: Int) {
+        synchronized(lock) { placements[displayId] = packageName }
     }
 
     /** Closes a private display. */

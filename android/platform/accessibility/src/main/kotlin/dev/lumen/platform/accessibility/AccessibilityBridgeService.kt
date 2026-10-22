@@ -24,7 +24,7 @@ public class AccessibilityBridgeService : Service() {
             Log.w(TAG, "the accessibility service is not enabled, so the bridge is not available")
             return null
         }
-        return service.bridge
+        return service.bridge.asBinder()
     }
 
     public companion object {

@@ -1,7 +1,7 @@
 package dev.lumen.core.agent
 
 import dev.lumen.core.model.Action
-import dev.lumen.core.model.ActionResult
+import dev.lumen.core.action.ActionResult
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.Observation
 import java.util.concurrent.atomic.AtomicBoolean
