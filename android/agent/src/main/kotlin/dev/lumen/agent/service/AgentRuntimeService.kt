@@ -93,11 +93,17 @@ public class AgentRuntimeService : android.app.Service() {
 
         override fun getState(runId: String?): String {
             val state = runtime?.state(runId.orEmpty())
-                ?: return json.encodeToString(
-                    dev.lumen.agent.ipc.AgentStatePayload.serializer(),
-                    dev.lumen.agent.ipc.AgentStatePayload(runId = runId.orEmpty(), phase = "IDLE"),
+            val payload = if (state == null) {
+                dev.lumen.agent.ipc.AgentStatePayload(
+                    runId = runId.orEmpty(),
+                    phase = "IDLE",
+                    stepIndex = 0,
+                    stepCount = 0,
                 )
-            return json.encodeToString(dev.lumen.agent.ipc.AgentStatePayload.serializer(), state)
+            } else {
+                dev.lumen.agent.ipc.Payloads.state(state)
+            }
+            return json.encodeToString(dev.lumen.agent.ipc.AgentStatePayload.serializer(), payload)
         }
 
         override fun getBudget(runId: String?): String {
