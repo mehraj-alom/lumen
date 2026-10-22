@@ -2,7 +2,7 @@ package dev.lumen.agent
 
 import dev.lumen.core.agent.StepEnvironment
 import dev.lumen.core.model.Action
-import dev.lumen.core.model.ActionResult
+import dev.lumen.core.action.ActionResult
 import dev.lumen.core.model.Observation
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.accessibility.UiEventTracker

@@ -46,6 +46,8 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.service)
 
