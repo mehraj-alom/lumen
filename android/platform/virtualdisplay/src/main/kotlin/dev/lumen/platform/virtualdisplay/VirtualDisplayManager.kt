@@ -3,6 +3,7 @@ package dev.lumen.platform.virtualdisplay
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -53,8 +54,9 @@ public class VirtualDisplayManager(private val context: Context) {
             null,
             null,
         )
-        synchronized(lock) { displays[display.displayId] = display }
-        display.displayId
+        val displayId = display.display.displayId
+        synchronized(lock) { displays[displayId] = display }
+        displayId
     } catch (error: Exception) {
         Log.w(TAG, "the virtual display could not be created", error)
         null
@@ -80,9 +82,9 @@ public class VirtualDisplayManager(private val context: Context) {
 
         // The activity has to be able to live on a secondary display, and it
         // must not be excluded from recents, or the user would lose it.
-        val resizeable = info.flags and (
-            ActivityInfo.FLAG_RESIZEABLE_FOR_SCREENS or ActivityInfo.FLAG_RESIZEABLE_ACTIVITY
-            ) != 0
+        val application = info.applicationInfo
+        val resizeable = application != null &&
+            application.flags and ApplicationInfo.FLAG_RESIZEABLE_FOR_SCREENS != 0
         if (!resizeable) return false
         if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) return false
         return true
@@ -95,7 +97,7 @@ public class VirtualDisplayManager(private val context: Context) {
      *   whether the app actually went there
      */
     public fun launchOn(packageName: String, displayId: Int): Boolean {
-        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
 
         val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             android.app.ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
