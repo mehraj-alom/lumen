@@ -17,6 +17,10 @@ jobs:
   android:
     name: Android build and static analysis
     runs-on: ubuntu-latest
+    # Every job in this workflow is capped: the runner bills by the minute and
+    # a run that hangs is a run that spends the account's whole monthly budget
+    # while nobody is looking.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: android
@@ -61,20 +65,16 @@ jobs:
           compileDebugUnitTestKotlin compileTestKotlin compileTestFixturesKotlin
           compileDebugAndroidTestKotlin --continue
 
-      - name: Dependency guard
-        run: ./gradlew :dependencyGuard :dependencyLedger
-
-      - name: Lint
-        run: ./gradlew lint
-
-      - name: Kotlin style
-        run: ./gradlew ktlintCheck
-
-      - name: Detekt
-        run: ./gradlew detekt
-
-      - name: Unit tests
-        run: ./gradlew test --continue
+      - name: Gate
+        # lint, ktlintCheck, detekt, the unit suites, both dependency guards and
+        # the debug assembly in one Gradle invocation. Seven cold invocations
+        # each pay for configuration and a daemon start and are billed by the
+        # minute; one pays once. `--continue` reports every failure in the run
+        # rather than stopping at the first task that breaks.
+        run: >
+          ./gradlew lint ktlintCheck detekt test
+          dependencyGuard dependencyLedger :app:assembleDebug
+          --continue
 
       - name: Upload the unit test reports
         # A red run that only says "1 failed" is not readable without the
@@ -89,12 +89,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Assemble
-        run: ./gradlew :app:assembleDebug --continue
-
   apk:
     name: Installable APKs
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: android
     defaults:
       run:
@@ -143,6 +141,10 @@ jobs:
   device:
     name: Instrumented tests
     runs-on: ubuntu-latest
+    # An emulator that cannot boot is not a test failure, it is an hour of
+    # billed minutes, and this is the only job in the workflow that can spend
+    # that much. The runner's own boot timeout is 600 s; this is the backstop.
+    timeout-minutes: 45
     needs: android
     defaults:
       run:
@@ -201,6 +203,7 @@ jobs:
   console-web:
     name: Web console
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: android/console-web
@@ -218,6 +221,7 @@ jobs:
   docs:
     name: Specification consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Check that every referenced spec file exists
