@@ -11,8 +11,10 @@ import dev.lumen.core.agent.AgentRuntime
 import dev.lumen.core.agent.ApprovalSignal
 import dev.lumen.core.agent.IndicatorState
 import dev.lumen.core.agent.RunConfig
+import dev.lumen.core.agent.RunProgress
 import dev.lumen.core.agent.RunState
 import dev.lumen.core.agent.StepEnvironment
+import dev.lumen.core.agent.StepProgress
 import dev.lumen.core.brain.BrainConfig
 import dev.lumen.core.brain.BrainFactory
 import dev.lumen.core.model.ApiError
@@ -74,6 +76,10 @@ public class AgentRuntimeFacade(
 
     private var service: AgentRuntimeService? = null
     private var currentRunId: String = ""
+
+    // Written by the run's coroutine and read by the binder threads answering
+    // getState, so the write has to be visible there.
+    @Volatile
     private var state: RunState = RunState(runId = "")
     private var takeoverActive = false
     private var runStartedAtMs = 0L
@@ -197,6 +203,7 @@ public class AgentRuntimeFacade(
             ledger = ledger,
             approvalSignal = approvalSignal(),
             ids = ids,
+            progress = RunProgress { step -> reportStep(step) },
             abort = abort,
             clock = { clock.nowMs() },
             config = runConfig(goal.constraints),
@@ -212,6 +219,35 @@ public class AgentRuntimeFacade(
                 stepsExecuted = state.stepIndex,
             )
         }
+    }
+
+    /**
+     * Puts the step the loop has chosen on every surface that watches the run.
+     *
+     * This is the loop's own voice: the counter, the intent line and the reason
+     * move while the agent works, rather than only at the ends of a run. The
+     * report is not a step, and nothing here waits for the screens to agree.
+     */
+    private fun reportStep(step: StepProgress) {
+        val current = state
+        if (current.phase.isTerminal || current.takeoverActive) {
+            // A step chosen before the stop or the takeover lands is still a step
+            // the loop is on, but it must not make a run the user ended look
+            // alive again: `I12` promises the screen agrees with the stop.
+            Log.w(TAG, "step ${step.stepIndex} of run ${current.runId} is not reported: the run is ${current.phase}")
+            return
+        }
+        publish(
+            current.copy(
+                phase = Phase.RUNNING,
+                indicatorState = IndicatorState.WORKING,
+                stepIndex = step.stepIndex,
+                stepCount = step.totalSteps,
+                planVersion = step.planVersion,
+                currentIntent = step.intent,
+                currentReason = step.reason,
+            ),
+        )
     }
 
     /** The limits the loop runs under, from the goal that arrived. */

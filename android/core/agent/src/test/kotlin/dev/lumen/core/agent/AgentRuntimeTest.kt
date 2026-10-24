@@ -43,6 +43,7 @@ class AgentRuntimeTest {
         clock: ManualClock,
         config: RunConfig = RunConfig(),
         ledger: ActionLedger = ActionLedger(FakeLedgerSink()),
+        progress: RunProgress = RunProgress.NONE,
     ): AgentRuntime = AgentRuntime(
         brain = brain,
         environment = environment,
@@ -52,6 +53,7 @@ class AgentRuntimeTest {
         ledger = ledger,
         approvalSignal = InMemoryApprovalSignal(store),
         ids = UlidGenerator(clock = clock),
+        progress = progress,
         config = config,
         abort = AbortSignal(),
         clock = { clock.nowMs() },
@@ -107,6 +109,30 @@ class AgentRuntimeTest {
         plan?.steps?.forEach { step ->
             assertThat(step.reason.text.trim()).isNotEmpty()
         }
+    }
+
+    @Test
+    fun `the loop names the step it is working on before it works on it`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(listOf(ScriptedEnvironment.screen(), ScriptedEnvironment.screen(label = "Book")))
+        val reported = mutableListOf<StepProgress>()
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = FakeBrain.planWith(
+                FakeBrain.tapStep("tap continue", "Continue"),
+                FakeBrain.tapStep("tap book", "Book"),
+            )
+        }
+
+        runtime(brain, environment, store, clock, progress = RunProgress { reported += it }).run(goal)
+
+        // A run of a hundred steps that says nothing until it is over cannot be
+        // told apart from one that stopped, and the planner's reason is owed to
+        // the viewer while the step is going, not only after it (invariant I9).
+        assertThat(reported.map { it.stepIndex }).containsExactly(1, 2).inOrder()
+        assertThat(reported.map { it.intent }).containsExactly("tap continue", "tap book").inOrder()
+        assertThat(reported.first().reason).isEqualTo("scripted by the fake")
+        assertThat(reported.first().totalSteps).isEqualTo(2)
     }
 
     @Test

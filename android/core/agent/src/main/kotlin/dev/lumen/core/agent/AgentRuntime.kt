@@ -48,6 +48,7 @@ public class AgentRuntime(
     private val ledger: ActionLedger,
     private val approvalSignal: ApprovalSignal,
     private val ids: UlidGenerator,
+    private val progress: RunProgress = RunProgress.NONE,
     private val config: RunConfig = RunConfig(),
     private val abort: AbortSignal = AbortSignal(),
     private val clock: () -> Long = System::currentTimeMillis,
@@ -89,6 +90,8 @@ public class AgentRuntime(
         val step = nextStep(state.plan)
         if (step == null) return idleAdvance(state)
 
+        report(state, step)
+
         return when (val result = executeStep(state.goal, state.plan, step, state.observation)) {
             is StepResult.Completed -> {
                 state.stepsExecuted++
@@ -118,6 +121,27 @@ public class AgentRuntime(
 
             StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
         }
+    }
+
+    /**
+     * Tells the watcher which step the loop has chosen.
+     *
+     * Before the dispatch rather than after it: the point of the report is that
+     * the run is working on this intent now, and a step that goes on to wait for
+     * an approval, or for a slow device, would otherwise say nothing until it
+     * was finished. A watcher that throws is not caught here, because the loop
+     * has no use for a progress report it had to swallow.
+     */
+    private fun report(state: RunState, step: Step) {
+        progress.onStep(
+            StepProgress(
+                stepIndex = state.stepsExecuted + 1,
+                totalSteps = state.plan.steps.size,
+                planVersion = step.planVersion,
+                intent = step.intent,
+                reason = step.reason.text,
+            ),
+        )
     }
 
     /**
