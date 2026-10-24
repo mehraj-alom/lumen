@@ -38,7 +38,10 @@ import kotlinx.serialization.json.Json
  */
 public class LumenAccessibilityService : AccessibilityService() {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val reader = NodeReader()
     private val tracker = UiEventTracker()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -165,6 +168,9 @@ public class LumenAccessibilityService : AccessibilityService() {
             packageName = packageName,
             screenWidth = width,
             screenHeight = height,
+            // The reader clamps the request to what the node index is budgeted
+            // for (`ARCH.md` §7); the bridge's caller can only ask for less.
+            maxNodes = maxNodes,
         )
         return snapshot.toObservation()
     }
@@ -195,15 +201,34 @@ public class LumenAccessibilityService : AccessibilityService() {
         return result && completed
     }
 
+    /**
+     * Dispatches one action.
+     *
+     * The pointer gestures are handled here because they are the actions that
+     * put a finger on the screen, and they are the ones `I3` is about.
+     * Everything else is answered by the two helpers below, so that each
+     * branch list stays short enough to read as the whole of what the device
+     * can do.
+     */
     private suspend fun perform(action: Action): Boolean = when (action) {
         is Action.Tap -> injector.tap(action.x, action.y)
         is Action.DoubleTap -> injector.doubleTap(action.x, action.y)
         is Action.LongPress -> injector.longPress(action.x, action.y, action.durationMs)
         is Action.Swipe -> injector.swipe(
-            action.fromX, action.fromY, action.toX, action.toY, action.durationMs,
+            action.fromX,
+            action.fromY,
+            action.toX,
+            action.toY,
+            action.durationMs,
         )
+
         is Action.Drag -> injector.drag(action.path, action.durationMs)
         is Action.Scroll -> scroll(action)
+        else -> performOnTarget(action)
+    }
+
+    /** The actions that work on an element: a node, an app, a field, a link. */
+    private suspend fun performOnTarget(action: Action): Boolean = when (action) {
         is Action.ClickById -> clickById(action.viewId)
         is Action.ClickText -> clickText(action.text, action.occurrence)
         is Action.OpenApp -> openApp(action.packageName)
@@ -211,35 +236,58 @@ public class LumenAccessibilityService : AccessibilityService() {
         is Action.InputText -> inputText(action.text)
         is Action.PasteText -> inputText(action.text)
         Action.PressEnter -> pressEnter()
-        is Action.ListApps -> true
-        is Action.ObserveScreen -> true
-        is Action.Screenshot -> captureScreenBlocking() != null
-        is Action.ReadFile -> false
+        else -> performWithoutEffect(action)
     }
 
+    /**
+     * The actions that answer the planner instead of moving the device.
+     *
+     * A primitive this service does not implement is refused rather than
+     * guessed at, and the refusal is logged, because `I9` says no action
+     * happens without an auditable reason and an invented one is worse.
+     */
+    private suspend fun performWithoutEffect(action: Action): Boolean = when (action) {
+        is Action.ListApps, is Action.ObserveScreen -> true
+        is Action.Screenshot -> captureScreenBlocking() != null
+        is Action.ReadFile -> false
+        else -> {
+            Log.w(TAG, "the action is not implemented on this device: ${action.javaClass.simpleName}")
+            false
+        }
+    }
+
+    /**
+     * Turns a scroll into a swipe.
+     *
+     * A scroll is a short stroke along a lane, not a fling: it has to stay
+     * inside the list it is scrolling, so both the lane and the travel are
+     * fractions of the display rather than pixel counts.
+     */
     private suspend fun scroll(action: Action.Scroll): Boolean {
-        val (width, height) = host.screenSize()
-        val centreX = action.lane?.fraction ?: 0.5
+        val centreX = action.lane?.fraction ?: SCROLL_DEFAULT_LANE_FRACTION
         val startY = when (action.direction) {
-            dev.lumen.core.model.ScrollDirection.UP -> 0.75
-            dev.lumen.core.model.ScrollDirection.DOWN -> 0.25
-            else -> 0.5
+            dev.lumen.core.model.ScrollDirection.UP -> SCROLL_LOWER_ANCHOR_FRACTION
+            dev.lumen.core.model.ScrollDirection.DOWN -> SCROLL_UPPER_ANCHOR_FRACTION
+            else -> SCROLL_CENTRE_ANCHOR_FRACTION
         }
         val endY = when (action.direction) {
-            dev.lumen.core.model.ScrollDirection.UP -> 0.25
-            dev.lumen.core.model.ScrollDirection.DOWN -> 0.75
-            else -> 0.5
+            dev.lumen.core.model.ScrollDirection.UP -> SCROLL_UPPER_ANCHOR_FRACTION
+            dev.lumen.core.model.ScrollDirection.DOWN -> SCROLL_LOWER_ANCHOR_FRACTION
+            else -> SCROLL_CENTRE_ANCHOR_FRACTION
         }
-        val distance = (action.amount).coerceIn(0.1, 1.0) * 0.4
+        val distance = action.amount.coerceIn(SCROLL_MIN_AMOUNT_FRACTION, SCROLL_MAX_AMOUNT_FRACTION) *
+            SCROLL_TRAVEL_FRACTION
 
-        val from = RelativePoint((centreX).coerceIn(0.0, 1.0)) to
-            RelativePoint((startY).coerceIn(0.0, 1.0))
-        val to = RelativePoint((centreX).coerceIn(0.0, 1.0)) to
+        val from = RelativePoint(centreX.coerceIn(0.0, 1.0)) to
+            RelativePoint(startY.coerceIn(0.0, 1.0))
+        val to = RelativePoint(centreX.coerceIn(0.0, 1.0)) to
             RelativePoint((startY + (endY - startY) * distance).coerceIn(0.0, 1.0))
 
         return injector.swipe(
-            RelativePoint(from.first.fraction), RelativePoint(from.second.fraction),
-            RelativePoint(to.first.fraction), RelativePoint(to.second.fraction),
+            RelativePoint(from.first.fraction),
+            RelativePoint(from.second.fraction),
+            RelativePoint(to.first.fraction),
+            RelativePoint(to.second.fraction),
         )
     }
 
@@ -292,6 +340,10 @@ public class LumenAccessibilityService : AccessibilityService() {
             startActivity(intent)
             true
         } catch (error: Exception) {
+            // The launch is refused by the platform (a profile restriction, or
+            // an app that is installed but disabled). The step fails, and the
+            // reason stays with it.
+            Log.w(TAG, "the app could not be opened: $packageName", error)
             false
         }
     }
@@ -303,6 +355,10 @@ public class LumenAccessibilityService : AccessibilityService() {
             startActivity(intent)
             true
         } catch (error: Exception) {
+            // No activity is registered for the scheme, or the user's default
+            // browser is disabled. Either way the step fails and the platform's
+            // reason is kept.
+            Log.w(TAG, "the url could not be opened", error)
             false
         }
     }
@@ -353,22 +409,55 @@ public class LumenAccessibilityService : AccessibilityService() {
      * reported as "no frame" rather than as an error.
      */
     private fun saveCapture(result: AccessibilityService.ScreenshotResult): String? {
+        // The hardware buffer and its colourspace are API 30, and the callback
+        // that reaches here runs outside the guard in captureScreenBlocking.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val bitmap = wrapHardwareBuffer(result) ?: return null
         return try {
-            val buffer = result.hardwareBuffer ?: return null
-            val bitmap = android.graphics.Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
-
-            val directory = java.io.File(filesDir, "frames")
-            if (!directory.isDirectory && !directory.mkdirs()) return null
-            val file = java.io.File(directory, "capture-${System.currentTimeMillis()}.png")
-            file.outputStream().use { out ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-            }
-            bitmap.recycle()
-            file.absolutePath
+            writeFrame(bitmap)
         } catch (error: Exception) {
             Log.w(TAG, "the capture could not be saved", error)
             null
+        } finally {
+            // The buffer came off the capture path and is the biggest thing in
+            // this process at this moment, so it goes back on every exit.
+            bitmap.recycle()
         }
+    }
+
+    /**
+     * The bitmap form of the hardware buffer, or null when the platform made
+     * it unreadable.
+     *
+     * The guard is repeated here rather than trusted from the caller: the
+     * buffer and its colourspace are API 30, and a helper that compiles
+     * against them has to say so itself.
+     */
+    private fun wrapHardwareBuffer(result: AccessibilityService.ScreenshotResult): android.graphics.Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return try {
+            val buffer = result.hardwareBuffer ?: return null
+            android.graphics.Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+        } catch (error: Exception) {
+            Log.w(TAG, "the hardware buffer could not be wrapped", error)
+            null
+        }
+    }
+
+    /**
+     * Writes one frame into the rotating frames directory.
+     *
+     * @return the path of the frame, or null when the directory could not be
+     *   made — the storage quota is enforced, not retried.
+     */
+    private fun writeFrame(bitmap: android.graphics.Bitmap): String? {
+        val directory = java.io.File(filesDir, FRAME_DIRECTORY)
+        if (!directory.isDirectory && !directory.mkdirs()) return null
+        val file = java.io.File(directory, "capture-${System.currentTimeMillis()}.png")
+        file.outputStream().use { out ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, PNG_COMPRESSION_QUALITY, out)
+        }
+        return file.absolutePath
     }
 
     private fun notifyListeners(notify: (IAccessibilityListener) -> Unit) {
@@ -384,6 +473,33 @@ public class LumenAccessibilityService : AccessibilityService() {
 
         private const val ACTION_TIMEOUT_SECONDS: Long = 20L
         private const val CAPTURE_TIMEOUT_SECONDS: Long = 10L
+
+        /** The directory the rotating frames live in (`ARCH.md` §7). */
+        private const val FRAME_DIRECTORY = "frames"
+
+        /** PNG is lossless, so the frame a spectator sees is the frame the planner saw. */
+        private const val PNG_COMPRESSION_QUALITY = 100
+
+        /** The lane a scroll runs down when the planner did not name one. */
+        private const val SCROLL_DEFAULT_LANE_FRACTION = 0.5
+
+        /** Where a downward scroll starts: a quarter of the way down the screen. */
+        private const val SCROLL_UPPER_ANCHOR_FRACTION = 0.25
+
+        /** Where the centre of an unspecified scroll direction sits. */
+        private const val SCROLL_CENTRE_ANCHOR_FRACTION = 0.5
+
+        /** Where an upward scroll starts: three quarters of the way down. */
+        private const val SCROLL_LOWER_ANCHOR_FRACTION = 0.75
+
+        /** The shortest scroll the planner can ask for, as a share of the travel. */
+        private const val SCROLL_MIN_AMOUNT_FRACTION = 0.1
+
+        /** The longest scroll the planner can ask for. */
+        private const val SCROLL_MAX_AMOUNT_FRACTION = 1.0
+
+        /** How far down the screen one full scroll travels. */
+        private const val SCROLL_TRAVEL_FRACTION = 0.4
 
         /** The connected service, or null. */
         @Volatile

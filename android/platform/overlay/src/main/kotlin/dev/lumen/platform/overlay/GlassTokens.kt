@@ -171,6 +171,27 @@ public object GlassTokens {
     /** The shadow blur of a core node, in dp. */
     public const val EDGE_GLOW_CORE_SHADOW_DP: Float = 5f
 
+    /** The length of the comet tail around the perimeter, as `uTailLength` in the shader. */
+    public const val EDGE_GLOW_TAIL_LENGTH: Float = 0.12f
+
+    /** The alpha of a halo node at the head of the trail, on the 0..255 scale. */
+    public const val EDGE_GLOW_HEAD_ALPHA: Int = 210
+
+    /** The halo radius multiplier at the head of the trail. */
+    public const val EDGE_GLOW_HALO_SCALE_HEAD: Float = 1.25f
+
+    /** The halo radius multiplier at the tail of the trail. */
+    public const val EDGE_GLOW_HALO_SCALE_TAIL: Float = 0.55f
+
+    /** The fraction of the trail, measured from the head, that carries a core node. */
+    public const val EDGE_GLOW_CORE_TRAIL_FRACTION: Float = 0.45f
+
+    /** The span of the trail over which the core alpha ramps from 0 to full. */
+    public const val EDGE_GLOW_CORE_RAMP_SPAN: Float = 0.55f
+
+    /** The core radius multiplier where the core first appears; the head adds its own alpha to it. */
+    public const val EDGE_GLOW_CORE_RADIUS_BASE: Float = 0.5f
+
     /** The diameter of the status dot, in dp. */
     public const val STATUS_DOT_DIAMETER_DP: Float = 10f
 
@@ -180,6 +201,18 @@ public object GlassTokens {
     /** The radius of the status dot's halo, in dp. */
     public const val STATUS_DOT_HALO_RADIUS_DP: Float = 16f
 
+    /** The shadow blur of the status dot, in dp. */
+    public const val STATUS_DOT_SHADOW_DP: Float = 5f
+
+    /** The alpha of the status dot's halo, on the 0..255 scale. */
+    public const val STATUS_DOT_HALO_ALPHA: Int = 90
+
+    /** The alpha of the status dot's shadow, on the 0..255 scale: the 40 % of `dotShadow`. */
+    public const val STATUS_DOT_SHADOW_ALPHA: Int = 100
+
+    /** The scale amplitude of the status dot's pulse: the dot scales 1.0 to 1.18. */
+    public const val STATUS_DOT_PULSE_AMPLITUDE: Float = 0.18f
+
     /** The period of the status dot's pulse, in milliseconds. */
     public const val STATUS_DOT_PULSE_MS: Int = 900
 
@@ -188,14 +221,32 @@ public object GlassTokens {
 
     // --------------------------------------------------------- indicator
 
+    /** The travel speed of the edge glow while the agent is idle. */
+    public const val EDGE_GLOW_SPEED_IDLE: Float = 0.25f
+
+    /** The travel speed of the edge glow while the agent is executing. */
+    public const val EDGE_GLOW_SPEED_WORKING: Float = 0.9f
+
+    /** The travel speed of the edge glow while a human decision is pending. */
+    public const val EDGE_GLOW_SPEED_APPROVAL: Float = 2.0f
+
+    /** The travel speed of the edge glow while the agent is gated. */
+    public const val EDGE_GLOW_SPEED_BLOCKED: Float = 0.4f
+
+    /** The travel speed of the edge glow after a failed run. */
+    public const val EDGE_GLOW_SPEED_ERROR: Float = 3.0f
+
+    /** The travel speed of the edge glow while a run is being aborted. */
+    public const val EDGE_GLOW_SPEED_ABORTING: Float = 3.0f
+
     /** The travel speed of the edge glow, in cycles per second, per state. */
     public fun edgeGlowSpeed(state: IndicatorState): Float = when (state) {
-        IndicatorState.IDLE -> 0.25f
-        IndicatorState.WORKING -> 0.9f
-        IndicatorState.AWAITING_APPROVAL -> 2.0f
-        IndicatorState.BLOCKED -> 0.4f
-        IndicatorState.ERROR -> 3.0f
-        IndicatorState.ABORTING -> 3.0f
+        IndicatorState.IDLE -> EDGE_GLOW_SPEED_IDLE
+        IndicatorState.WORKING -> EDGE_GLOW_SPEED_WORKING
+        IndicatorState.AWAITING_APPROVAL -> EDGE_GLOW_SPEED_APPROVAL
+        IndicatorState.BLOCKED -> EDGE_GLOW_SPEED_BLOCKED
+        IndicatorState.ERROR -> EDGE_GLOW_SPEED_ERROR
+        IndicatorState.ABORTING -> EDGE_GLOW_SPEED_ABORTING
     }
 
     /** The core colour of [state]. */

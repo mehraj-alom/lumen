@@ -22,9 +22,7 @@ public interface ScreenStateSource {
  * A touch is the strongest signal that the user is present. Any touch
  * resets the idle window, whatever else the device is doing.
  */
-public class TouchObserver(
-    private val clock: LumenClock = SystemLumenClock,
-) {
+public class TouchObserver(private val clock: LumenClock = SystemLumenClock) {
     private val lock = Any()
     private var lastTouchMs: Long? = null
 
@@ -53,11 +51,7 @@ public class TouchObserver(
 }
 
 /** The gate's answer. */
-public data class IdleDecision(
-    val permitted: Boolean,
-    val reason: String,
-    val waitMs: Long = 0L,
-)
+public data class IdleDecision(val permitted: Boolean, val reason: String, val waitMs: Long = 0L)
 
 /**
  * The idle gate.
@@ -74,50 +68,42 @@ public class IdleGate(
     private val clock: LumenClock = SystemLumenClock,
 ) {
 
-    /** Whether a live-surface action is permitted right now. */
+    /**
+     * Whether a live-surface action is permitted right now.
+     *
+     * The order of the checks is the order of their confidence: an off screen
+     * and a locked keyguard are proof that nobody is using the device, an
+     * untouched device is next, and only a touch inside the window says the
+     * user is present.
+     */
     public fun permitsLiveSurface(): IdleDecision {
-        val now = clock.nowMs()
+        if (!screenState.isScreenOn()) return permitted("the screen is off, so the live surface is not in use")
+        if (screenState.isKeyguardLocked()) return permitted("the keyguard is locked, so the live surface is not in use")
 
-        if (!screenState.isScreenOn()) {
-            return IdleDecision(
-                permitted = true,
-                reason = "the screen is off, so the live surface is not in use",
-            )
-        }
+        val lastTouch = touchObserver.lastTouchMs() ?: return permitted(
+            "the device has not been touched, so the live surface is not in use",
+        )
 
-        if (screenState.isKeyguardLocked()) {
-            return IdleDecision(
-                permitted = true,
-                reason = "the keyguard is locked, so the live surface is not in use",
-            )
-        }
-
-        val lastTouch = touchObserver.lastTouchMs()
-        if (lastTouch == null) {
-            return IdleDecision(
-                permitted = true,
-                reason = "the device has not been touched, so the live surface is not in use",
-            )
-        }
-
-        val since = now - lastTouch
+        // The clock is read after the touch, so `since` cannot come out negative
+        // when the two are sampled a millisecond apart.
+        val since = clock.nowMs() - lastTouch
         if (since >= idleWindowMs) {
-            return IdleDecision(
-                permitted = true,
-                reason = "the device has been untouched for ${since}ms, so the live surface is not in use",
-            )
+            return permitted("the device has been untouched for ${since}ms, so the live surface is not in use")
         }
 
-        val wait = idleWindowMs - since
         return IdleDecision(
             permitted = false,
             reason = "the device was touched ${since}ms ago, so the live surface is in use",
-            waitMs = wait,
+            waitMs = idleWindowMs - since,
         )
     }
 
-    /** How long the agent has to wait before the live surface is free. */
+    /**
+     * How long the agent has to wait before the live surface is free.
+     */
     public fun waitMs(): Long = permitsLiveSurface().waitMs
+
+    private fun permitted(reason: String): IdleDecision = IdleDecision(permitted = true, reason = reason)
 
     public companion object {
         /** The default idle window. */

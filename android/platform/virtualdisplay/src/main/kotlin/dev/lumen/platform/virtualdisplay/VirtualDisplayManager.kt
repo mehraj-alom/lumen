@@ -39,11 +39,7 @@ public class VirtualDisplayManager(private val context: Context) {
      *
      * @return the display id, or null when the platform refused
      */
-    public fun acquire(
-        widthPx: Int = DEFAULT_WIDTH,
-        heightPx: Int = DEFAULT_HEIGHT,
-        densityDpi: Int = DEFAULT_DENSITY,
-    ): Int? = try {
+    public fun acquire(widthPx: Int = DEFAULT_WIDTH, heightPx: Int = DEFAULT_HEIGHT, densityDpi: Int = DEFAULT_DENSITY): Int? = try {
         val display = displayManager.createVirtualDisplay(
             VIRTUAL_DISPLAY_NAME,
             widthPx,
@@ -77,17 +73,27 @@ public class VirtualDisplayManager(private val context: Context) {
         val info = try {
             context.packageManager.getActivityInfo(component, PackageManager.GET_META_DATA)
         } catch (error: PackageManager.NameNotFoundException) {
+            // The launcher knows a component the package manager cannot resolve,
+            // which means the app was uninstalled while it was still listed.
+            Log.w(TAG, "the activity of $packageName could not be resolved", error)
             return false
         }
 
-        // The activity has to be able to live on a secondary display, and it
-        // must not be excluded from recents, or the user would lose it.
+        return rendersOnSecondaryDisplay(info)
+    }
+
+    /**
+     * Whether the activity may be moved off the default display.
+     *
+     * The activity has to be able to live on a secondary display, and it must
+     * not be excluded from recents, or the user would lose it.
+     */
+    private fun rendersOnSecondaryDisplay(info: ActivityInfo): Boolean {
         val application = info.applicationInfo
         val resizeable = application != null &&
             application.flags and ApplicationInfo.FLAG_RESIZEABLE_FOR_SCREENS != 0
-        if (!resizeable) return false
-        if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) return false
-        return true
+        val keptInRecents = info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS == 0
+        return resizeable && keptInRecents
     }
 
     /**
@@ -123,8 +129,7 @@ public class VirtualDisplayManager(private val context: Context) {
      * manager's own record of what it did. It is what the agent needs: it
      * wants to know where it put the app, not what the platform thinks.
      */
-    public fun isTaskOn(packageName: String, displayId: Int): Boolean =
-        synchronized(lock) { placements[displayId] == packageName }
+    public fun isTaskOn(packageName: String, displayId: Int): Boolean = synchronized(lock) { placements[displayId] == packageName }
 
     /** Records that [packageName] was launched onto [displayId]. */
     private fun recordPlacement(packageName: String, displayId: Int) {

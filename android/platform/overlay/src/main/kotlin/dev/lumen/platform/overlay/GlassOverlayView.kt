@@ -4,12 +4,11 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
-import kotlin.math.min
 
 /**
  * The indicator, drawn over whatever is on screen.
@@ -20,12 +19,11 @@ import kotlin.math.min
  *
  * The edge glow is drawn with AGSL where the platform has it, and with the
  * Canvas on the versions that do not. The two are the same picture: a
- * travelling comet along the perimeter.
+ * travelling comet along the perimeter. Every literal that shapes that comet
+ * is a token in `GlassTokens` rather than a number inside one of the two
+ * paths, so neither path can drift on its own.
  */
-public class GlassOverlayView @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-) : View(context, attrs) {
+public class GlassOverlayView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
     private var state: IndicatorState = IndicatorState.IDLE
     private var mode: IndicatorMode = IndicatorMode.EDGE_GLOW
@@ -49,6 +47,9 @@ public class GlassOverlayView @JvmOverloads constructor(
                     context.assets.open("shaders/edge_glow.frag").bufferedReader().use { it.readText() },
                 )
             } catch (error: Exception) {
+                // The Canvas path renders the same comet, so a shader that will
+                // not compile degrades the indicator rather than losing it.
+                Log.w(TAG, "the edge glow shader could not be compiled; drawing it on the canvas", error)
                 null
             }
         }
@@ -106,7 +107,9 @@ public class GlassOverlayView @JvmOverloads constructor(
         if (mode == IndicatorMode.OFF) return
 
         val now = System.currentTimeMillis()
-        val delta = ((now - lastFrameMs) / 1000f).coerceIn(0f, 0.1f)
+        // A frame that arrives late because the UI thread was busy must not
+        // throw the comet forward, so the elapsed time is clamped.
+        val delta = ((now - lastFrameMs) / MS_PER_SECOND).coerceIn(0f, MAX_FRAME_DELTA_SECONDS)
         lastFrameMs = now
 
         val speed = GlassTokens.edgeGlowSpeed(state)
@@ -138,10 +141,13 @@ public class GlassOverlayView @JvmOverloads constructor(
      * comet head is crisp on every device.
      */
     private fun drawWithShader(canvas: Canvas, active: RuntimeShader) {
+        // AGSL uniforms need API 33. The shader is only built on 33+; the
+        // check is restated here because it is where the calls live.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val thickness = GlassTokens.EDGE_GLOW_THICKNESS_DP * density
         active.setFloatUniform("uSize", width.toFloat(), height.toFloat())
         active.setFloatUniform("uThickness", thickness)
-        active.setFloatUniform("uTailLength", 0.12f)
+        active.setFloatUniform("uTailLength", GlassTokens.EDGE_GLOW_TAIL_LENGTH)
         active.setFloatUniform("uNodeCount", GlassTokens.EDGE_GLOW_NODES)
         active.setFloatUniform("uPhase", phase)
         active.setFloatUniform("uSpeed", GlassTokens.edgeGlowSpeed(state))
@@ -156,7 +162,10 @@ public class GlassOverlayView @JvmOverloads constructor(
      * The canvas path, for the platforms without AGSL.
      *
      * The comet is drawn as a run of halo nodes along the perimeter, fading
-     * away from the head.
+     * away from the head. The trail this path draws is as long as the node
+     * count times the node spacing, which is the same picture the shader
+     * builds from [GlassTokens.EDGE_GLOW_TAIL_LENGTH]; the two are shaped by
+     * the tokens in `STYLE_GUIDE.md` §5.1, not by literals here.
      */
     private fun drawEdgeGlowWithCanvas(canvas: Canvas) {
         val thickness = GlassTokens.EDGE_GLOW_THICKNESS_DP * density
@@ -170,28 +179,43 @@ public class GlassOverlayView @JvmOverloads constructor(
             val position = (phase - index * spacing) % 1f
             val (x, y) = perimeterPoint(position)
 
-            haloPaint.color = argb(((210 * alpha).toInt()).coerceIn(0, 255), halo)
+            haloPaint.color = argb(
+                ((GlassTokens.EDGE_GLOW_HEAD_ALPHA * alpha).toInt()).coerceIn(0, ALPHA_CHANNEL_MAX),
+                halo,
+            )
             haloPaint.setShadowLayer(
                 GlassTokens.EDGE_GLOW_HALO_SHADOW_DP * density * alpha + 2f * density,
-                0f, 0f, haloPaint.color,
+                0f,
+                0f,
+                haloPaint.color,
             )
             canvas.drawCircle(
-                x, y,
-                GlassTokens.EDGE_GLOW_HALO_RADIUS_DP * density * (1.25f * alpha + 0.55f),
+                x,
+                y,
+                GlassTokens.EDGE_GLOW_HALO_RADIUS_DP * density *
+                    (GlassTokens.EDGE_GLOW_HALO_SCALE_HEAD * alpha + GlassTokens.EDGE_GLOW_HALO_SCALE_TAIL),
                 haloPaint,
             )
             haloPaint.clearShadowLayer()
 
-            if (alpha > 0.45f) {
-                val coreAlpha = (alpha - 0.45f) / 0.55f
-                corePaint.color = argb(((255 * coreAlpha).toInt()).coerceIn(0, 255), core)
+            if (alpha > GlassTokens.EDGE_GLOW_CORE_TRAIL_FRACTION) {
+                val coreAlpha = (alpha - GlassTokens.EDGE_GLOW_CORE_TRAIL_FRACTION) /
+                    GlassTokens.EDGE_GLOW_CORE_RAMP_SPAN
+                corePaint.color = argb(
+                    (ALPHA_CHANNEL_MAX * coreAlpha).toInt().coerceIn(0, ALPHA_CHANNEL_MAX),
+                    core,
+                )
                 corePaint.setShadowLayer(
                     GlassTokens.EDGE_GLOW_CORE_SHADOW_DP * density * coreAlpha,
-                    0f, 0f, corePaint.color,
+                    0f,
+                    0f,
+                    corePaint.color,
                 )
                 canvas.drawCircle(
-                    x, y,
-                    GlassTokens.EDGE_GLOW_CORE_RADIUS_DP * density * (0.5f + coreAlpha),
+                    x,
+                    y,
+                    GlassTokens.EDGE_GLOW_CORE_RADIUS_DP * density *
+                        (GlassTokens.EDGE_GLOW_CORE_RADIUS_BASE + coreAlpha),
                     corePaint,
                 )
                 corePaint.clearShadowLayer()
@@ -222,15 +246,20 @@ public class GlassOverlayView @JvmOverloads constructor(
         val color = GlassTokens.stateColor(state)
         val halo = GlassTokens.stateHaloColor(state)
 
-        val pulse = 1f + 0.18f * kotlin.math.sin(
-            phase * 2f * Math.PI * (1000f / GlassTokens.STATUS_DOT_PULSE_MS),
+        val pulse = 1f + GlassTokens.STATUS_DOT_PULSE_AMPLITUDE * kotlin.math.sin(
+            phase * 2f * Math.PI * (MS_PER_SECOND / GlassTokens.STATUS_DOT_PULSE_MS),
         ).toFloat()
 
-        dotPaint.color = argb(90, halo)
+        dotPaint.color = argb(GlassTokens.STATUS_DOT_HALO_ALPHA, halo)
         canvas.drawCircle(x, y, GlassTokens.STATUS_DOT_HALO_RADIUS_DP * density, dotPaint)
 
         dotPaint.color = color.toInt()
-        dotPaint.setShadowLayer(5f * density, 0f, 0f, argb(100, color))
+        dotPaint.setShadowLayer(
+            GlassTokens.STATUS_DOT_SHADOW_DP * density,
+            0f,
+            0f,
+            argb(GlassTokens.STATUS_DOT_SHADOW_ALPHA, color),
+        )
         canvas.drawCircle(x, y, radius * pulse, dotPaint)
         dotPaint.clearShadowLayer()
     }
@@ -246,9 +275,16 @@ public class GlassOverlayView @JvmOverloads constructor(
         return Color.argb(alpha, Color.red(value), Color.green(value), Color.blue(value))
     }
 
-    /** The rounded rectangle the surface occupies, for a Canvas fallback. */
-    protected fun surfaceRect(): RectF = RectF(0f, 0f, width.toFloat(), height.toFloat())
+    public companion object {
+        private const val TAG = "LumenOverlay"
 
-    /** The smaller of the two dimensions, used to keep the band proportional. */
-    protected fun shorterSide(): Float = min(width, height).toFloat()
+        /** Milliseconds in a second, for converting a frame delta to seconds. */
+        private const val MS_PER_SECOND = 1000f
+
+        /** The largest frame delta the comet trusts, so a stalled UI thread does not jump it. */
+        private const val MAX_FRAME_DELTA_SECONDS = 0.1f
+
+        /** The ceiling of one ARGB channel. */
+        private const val ALPHA_CHANNEL_MAX = 255
+    }
 }

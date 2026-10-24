@@ -6,23 +6,18 @@ import android.graphics.Path
 import android.view.accessibility.AccessibilityEvent
 import dev.lumen.core.grounding.UiEventClock
 import dev.lumen.core.model.RelativePoint
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * The gesture injector.
  *
  * Every gesture the agent makes goes through here, so there is one place
- * that knows how a tap becomes a [GestureDescription]. A drag is a path
- * with an easing curve, not a start-to-end fling: the shape of the path is
- * usually the point of the gesture.
+ * that knows how a tap becomes a [GestureDescription]. A drag replays the
+ * path it is given rather than flinging from end to end: the shape of the
+ * path is usually the point of the gesture.
  */
-public class GestureInjector(
-    private val service: AccessibilityService,
-    private val screenSize: () -> Pair<Int, Int>,
-) {
+public class GestureInjector(private val service: AccessibilityService, private val screenSize: () -> Pair<Int, Int>) {
 
     /** Taps at a relative position. */
     public suspend fun tap(x: RelativePoint, y: RelativePoint): Boolean = stroke(
@@ -39,11 +34,8 @@ public class GestureInjector(
     }
 
     /** Presses and holds at a relative position. */
-    public suspend fun longPress(
-        x: RelativePoint,
-        y: RelativePoint,
-        durationMs: Long = DEFAULT_LONG_PRESS_MS,
-    ): Boolean = stroke(listOf(x to y), durationMs = durationMs)
+    public suspend fun longPress(x: RelativePoint, y: RelativePoint, durationMs: Long = DEFAULT_LONG_PRESS_MS): Boolean =
+        stroke(listOf(x to y), durationMs = durationMs)
 
     /** Swipes between two relative positions. */
     public suspend fun swipe(
@@ -57,12 +49,16 @@ public class GestureInjector(
         durationMs = durationMs,
     )
 
-    /** Drags along a path of relative positions. */
-    public suspend fun drag(
-        path: List<RelativePoint>,
-        durationMs: Long = DEFAULT_DRAG_MS,
-        easing: Easing = Easing.NATURAL,
-    ): Boolean {
+    /**
+     * Drags along a path of relative positions.
+     *
+     * The points are replayed as given: every one of them is a point on the
+     * screen, and the gesture API draws straight segments between them.
+     * `Action.Drag` carries an easing for the side that produces the path, so
+     * a curve that was meant to be interpolated has to be interpolated before
+     * it gets here — the injector does not resample it.
+     */
+    public suspend fun drag(path: List<RelativePoint>, durationMs: Long = DEFAULT_DRAG_MS): Boolean {
         if (path.size < 2) return false
         val (width, height) = screenSize()
         if (width <= 0 || height <= 0) return false
@@ -88,10 +84,7 @@ public class GestureInjector(
     }
 
     /** A single straight stroke through [points]. */
-    private suspend fun stroke(
-        points: List<Pair<RelativePoint, RelativePoint>>,
-        durationMs: Long,
-    ): Boolean {
+    private suspend fun stroke(points: List<Pair<RelativePoint, RelativePoint>>, durationMs: Long): Boolean {
         val (width, height) = screenSize()
         if (width <= 0 || height <= 0) return false
         if (points.isEmpty()) return false
@@ -117,23 +110,22 @@ public class GestureInjector(
     }
 
     /** Hands the gesture to the platform and waits for the outcome. */
-    private suspend fun dispatch(gesture: GestureDescription): Boolean =
-        suspendCancellableCoroutine { continuation ->
-            val callback = object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(true)
-                }
-
-                override fun onCancelled(gestureDescription: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(false)
-                }
+    private suspend fun dispatch(gesture: GestureDescription): Boolean = suspendCancellableCoroutine { continuation ->
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                if (continuation.isActive) continuation.resume(true)
             }
 
-            val dispatched = service.dispatchGesture(gesture, callback, null)
-            if (!dispatched && continuation.isActive) {
-                continuation.resume(false)
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                if (continuation.isActive) continuation.resume(false)
             }
         }
+
+        val dispatched = service.dispatchGesture(gesture, callback, null)
+        if (!dispatched && continuation.isActive) {
+            continuation.resume(false)
+        }
+    }
 
     public companion object {
         /** The default duration of a tap. */
@@ -150,23 +142,6 @@ public class GestureInjector(
 
         /** The default duration of a drag. */
         public const val DEFAULT_DRAG_MS: Long = 500L
-    }
-}
-
-/** The easing of a synthesised drag. */
-public enum class Easing {
-    LINEAR,
-    EASE_IN_OUT,
-    EASE_OUT,
-    NATURAL,
-    ;
-
-    /** The eased progress at [t], between zero and one. */
-    public fun apply(t: Double): Double = when (this) {
-        LINEAR -> t
-        EASE_IN_OUT -> if (t < 0.5) 2 * t * t else 1 - ((-2 * t + 2) * (-2 * t + 2)) / 2
-        EASE_OUT -> 1 - (1 - t) * (1 - t)
-        NATURAL -> t * t * (3 - 2 * t)
     }
 }
 
@@ -211,14 +186,3 @@ public class UiEventTracker : UiEventClock {
         else -> false
     }
 }
-
-/** A point on a circle, used by the natural drag curve. */
-internal fun circlePoint(
-    centreX: Double,
-    centreY: Double,
-    radius: Double,
-    angleRadians: Double,
-): Pair<Double, Double> = Pair(
-    centreX + radius * cos(angleRadians),
-    centreY + radius * sin(angleRadians),
-)

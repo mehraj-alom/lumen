@@ -8,19 +8,12 @@ class IdleGateTest {
 
     private val clock = ManualClock(1_000L)
 
-    private class FakeScreenState(
-        var screenOn: Boolean = true,
-        var keyguardLocked: Boolean = false,
-    ) : ScreenStateSource {
+    private class FakeScreenState(var screenOn: Boolean = true, var keyguardLocked: Boolean = false) : ScreenStateSource {
         override fun isScreenOn(): Boolean = screenOn
         override fun isKeyguardLocked(): Boolean = keyguardLocked
     }
 
-    private fun gate(
-        state: FakeScreenState,
-        observer: TouchObserver,
-        windowMs: Long = 60_000L,
-    ) = IdleGate(state, observer, windowMs, clock)
+    private fun gate(state: FakeScreenState, observer: TouchObserver, windowMs: Long = 60_000L) = IdleGate(state, observer, windowMs, clock)
 
     @Test
     fun `a screen that is off permits the live surface`() {

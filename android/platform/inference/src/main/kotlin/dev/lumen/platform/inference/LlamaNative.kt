@@ -1,5 +1,7 @@
 package dev.lumen.platform.inference
 
+import dev.lumen.core.brain.NativeInference
+
 /**
  * The native inference runtime, loaded from the `localInference` flavour.
  *
@@ -9,12 +11,24 @@ package dev.lumen.platform.inference
  */
 public object LlamaNative : NativeInference {
 
-    private val loaded: Boolean = try {
+    /**
+     * Why the native library is missing, or null when it loaded.
+     *
+     * The reason is kept because the router reports it when a `LOCAL` pin
+     * cannot be honoured: "there is no local model" and "the runtime that
+     * would run it is not in this build" are different answers to the user.
+     */
+    private val loadFailure: UnsatisfiedLinkError? = try {
         System.loadLibrary("lumen-inference")
-        true
+        null
     } catch (error: UnsatisfiedLinkError) {
-        false
+        error
     }
+
+    private val loaded: Boolean = loadFailure == null
+
+    /** The message of the load failure, for a route decision that has to explain itself. */
+    public val unavailableReason: String? get() = loadFailure?.message
 
     override fun isReady(): Boolean = loaded && nativeIsReady()
 

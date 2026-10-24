@@ -4,7 +4,6 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.os.PowerManager
 import android.view.Display
-import android.view.WindowManager
 
 /**
  * The device's screen and keyguard state, read from the platform.
@@ -13,7 +12,6 @@ public class PlatformScreenState(context: Context) : ScreenStateSource {
 
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     override fun isScreenOn(): Boolean = powerManager.isInteractive
 
@@ -45,9 +43,7 @@ public interface TouchSource {
  * user is mid-drag. The window is a guard against the common case, not a
  * proof that nobody is touching the screen.
  */
-public class PlatformTouchSource(
-    private val lastEvent: () -> Long?,
-) : TouchSource {
+public class PlatformTouchSource(private val lastEvent: () -> Long?) : TouchSource {
     override fun lastTouchMs(): Long? = lastEvent()
 }
 
@@ -57,10 +53,7 @@ public class PlatformTouchSource(
  * The observer is the one place that knows how a raw touch is discovered,
  * so the gate itself stays a pure function of the last touch.
  */
-public class PlatformTouchObserver(
-    private val observer: TouchObserver,
-    private val source: TouchSource,
-) {
+public class PlatformTouchObserver(private val observer: TouchObserver, private val source: TouchSource) {
     /**
      * Folds the platform's latest touch into the observer.
      *

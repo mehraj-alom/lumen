@@ -3,6 +3,7 @@ package dev.lumen.platform.overlay
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -21,10 +22,7 @@ import android.view.WindowManager
  * touchable, so it cannot steal a tap. The **card** is focusable, because
  * the user has to be able to answer it.
  */
-public class OverlayHost(
-    private val context: Context,
-    private val windowManager: WindowManager,
-) {
+public class OverlayHost(private val context: Context, private val windowManager: WindowManager) {
 
     private var indicatorView: GlassOverlayView? = null
     private var indicatorAdded: Boolean = false
@@ -62,6 +60,9 @@ public class OverlayHost(
                 windowManager.addView(view, indicatorParams())
                 indicatorAdded = true
             } catch (error: Exception) {
+                // Without a window there is no indicator, but the run is not
+                // stopped by it: the foreground notification still reports it.
+                Log.w(TAG, "the indicator window could not be added", error)
                 indicatorAdded = false
             }
         }
@@ -74,7 +75,9 @@ public class OverlayHost(
         try {
             windowManager.removeViewImmediate(view)
         } catch (error: Exception) {
-            // The window was already gone.
+            // A window that was never added, or that the service already lost,
+            // is not a failure: the host only has to stop believing in it.
+            Log.d(TAG, "the indicator window was already gone", error)
         }
         indicatorAdded = false
     }
@@ -87,6 +90,9 @@ public class OverlayHost(
             windowManager.addView(view, cardParams())
             cardAdded = true
         } catch (error: Exception) {
+            // A card is a HITL surface: with no card there is no way for the
+            // user to answer, so this is a broken run rather than a degraded one.
+            Log.e(TAG, "the card window could not be added", error)
             cardAdded = false
             cardView = null
         }
@@ -100,6 +106,7 @@ public class OverlayHost(
             windowManager.removeViewImmediate(view)
         } catch (error: Exception) {
             // The window was already gone.
+            Log.d(TAG, "the card window was already gone", error)
         }
         cardAdded = false
         cardView = null
@@ -111,33 +118,34 @@ public class OverlayHost(
         hideIndicator()
     }
 
-    private fun indicatorParams(): WindowManager.LayoutParams =
-        WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START }
-
-    private fun cardParams(): WindowManager.LayoutParams =
-        WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayType(),
+    private fun indicatorParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        overlayType(),
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.CENTER }
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        PixelFormat.TRANSLUCENT,
+    ).apply { gravity = Gravity.TOP or Gravity.START }
 
-    private fun overlayType(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-        }
+    private fun cardParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        overlayType(),
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        PixelFormat.TRANSLUCENT,
+    ).apply { gravity = Gravity.CENTER }
+
+    private fun overlayType(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+    } else {
+        @Suppress("DEPRECATION")
+        WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+    }
+
+    public companion object {
+        private const val TAG = "LumenOverlay"
+    }
 }

@@ -51,38 +51,45 @@ public object SurfaceSelection {
      *   available
      */
     public fun choose(request: SurfaceRequest, virtualDisplayId: Int? = null): SurfaceDecision {
+        val denial = denialFor(request)
+        if (denial != null) return SurfaceDecision.Deny(denial)
+
+        if (request.virtualDisplayAvailable && request.targetSupportsSecondaryDisplay && virtualDisplayId != null) {
+            return SurfaceDecision.UseVirtualDisplay(virtualDisplayId)
+        }
+
+        // The live surface is the last resort, and it is only ever taken when
+        // the user is away: held when they are not, used when they are.
+        return if (request.deviceIsIdle) {
+            SurfaceDecision.UseLiveSurface(liveSurfaceReason(request))
+        } else {
+            SurfaceDecision.Hold("the device is in use, so the live surface is not permitted", request.idleWaitMs)
+        }
+    }
+
+    /**
+     * Why the step is refused, or null when both packages are allowed.
+     *
+     * The requested package is checked before the foreground one: the plan
+     * named that app, so its refusal is the more specific reason.
+     */
+    private fun denialFor(request: SurfaceRequest): String? {
         if (request.packageName !in request.allowlist) {
-            return SurfaceDecision.Deny(
-                "the package ${request.packageName} is not on the allowlist",
-            )
+            return "the package ${request.packageName} is not on the allowlist"
         }
 
         val foreground = request.foregroundPackage
         if (foreground != null && foreground !in request.allowlist) {
-            return SurfaceDecision.Deny(
-                "the foreground package $foreground is not on the allowlist",
-            )
+            return "the foreground package $foreground is not on the allowlist"
         }
 
-        if (request.virtualDisplayAvailable &&
-            request.targetSupportsSecondaryDisplay &&
-            virtualDisplayId != null
-        ) {
-            return SurfaceDecision.UseVirtualDisplay(virtualDisplayId)
-        }
+        return null
+    }
 
-        if (!request.deviceIsIdle) {
-            return SurfaceDecision.Hold(
-                "the device is in use, so the live surface is not permitted",
-                request.idleWaitMs,
-            )
-        }
-
-        val reason = if (request.targetSupportsSecondaryDisplay) {
-            "the app could not be moved to a private display, and the device is idle"
-        } else {
-            "the app does not support a secondary display, and the device is idle"
-        }
-        return SurfaceDecision.UseLiveSurface(reason)
+    /** Why the live surface is the right place now the idle gate has passed. */
+    private fun liveSurfaceReason(request: SurfaceRequest): String = if (request.targetSupportsSecondaryDisplay) {
+        "the app could not be moved to a private display, and the device is idle"
+    } else {
+        "the app does not support a secondary display, and the device is idle"
     }
 }

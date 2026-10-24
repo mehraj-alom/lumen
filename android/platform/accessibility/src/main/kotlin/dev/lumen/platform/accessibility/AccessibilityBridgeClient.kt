@@ -26,7 +26,10 @@ import kotlinx.serialization.json.Json
  */
 public class AccessibilityBridgeClient(private val context: Context) {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val connectedState = MutableStateFlow(false)
 
     private var binder: IAccessibilityBridge? = null
@@ -95,8 +98,7 @@ public class AccessibilityBridgeClient(private val context: Context) {
     public suspend fun captureScreen(): String? = awaitBridge()?.captureScreen()
 
     /** Opens an application. */
-    public suspend fun openApp(packageName: String): Boolean =
-        awaitBridge()?.openApp(packageName) ?: false
+    public suspend fun openApp(packageName: String): Boolean = awaitBridge()?.openApp(packageName) ?: false
 
     /** Waits for the binding, or gives up. */
     private suspend fun awaitBridge(): IAccessibilityBridge? {
