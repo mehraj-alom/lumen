@@ -11,6 +11,11 @@ android {
     defaultConfig {
         minSdk = 26
         testOptions.targetSdk = 35
+        // No default runner exists for a library module, so without this the
+        // merged androidTest manifest declares no `<instrumentation>` and the
+        // connected task installs the APK, runs nothing and passes. See the
+        // same line in `:core:store`.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {

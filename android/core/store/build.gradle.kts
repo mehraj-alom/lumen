@@ -23,6 +23,12 @@ android {
     defaultConfig {
         minSdk = 26
         testOptions.targetSdk = 35
+        // A library module has no default runner, and AGP adds no
+        // `<instrumentation>` element without one, so `connectedDebugAndroidTest`
+        // installs the test APK, finds nothing to run and reports success on
+        // zero tests. This suite is the only place the encrypted store and the
+        // migrations are exercised, so it has to actually start.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
