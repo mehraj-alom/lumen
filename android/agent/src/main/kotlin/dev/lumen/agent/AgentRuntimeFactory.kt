@@ -3,6 +3,8 @@ package dev.lumen.agent
 import android.content.Context
 import dev.lumen.agent.service.AgentRuntimeFacade
 import dev.lumen.core.action.ActionLedger
+import dev.lumen.core.brain.BrainConfig
+import dev.lumen.core.brain.BrainFactory
 import dev.lumen.core.brain.BrainPort
 import dev.lumen.core.brain.BrainRouter
 import dev.lumen.core.brain.CloudBrain
@@ -45,6 +47,15 @@ import okhttp3.RequestBody.Companion.toRequestBody
  */
 public class AgentRuntimeFactory(private val context: Context, private val clock: LumenClock = SystemLumenClock) {
 
+    /**
+     * The one HTTP client this process makes calls with.
+     *
+     * OkHttp keeps a thread pool and a connection pool per client, and a brain
+     * is built per run now; a client per run would leave threads behind that
+     * outlive it (`AGENTS.md` §2 caps the workers).
+     */
+    private val transport: HttpTransport by lazy { OkHttpTransport() }
+
     /** The sandbox root: the app-scoped directory everything lives in. */
     public fun sandboxRoot(): SandboxRoot = SandboxRoot(
         java.io.File(context.filesDir, SANDBOX_DIRECTORY),
@@ -85,23 +96,27 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     )
 
     /**
-     * The brain.
+     * The brain for one run.
      *
-     * The local model is used when one is installed and fits the remaining
-     * budget, and the cloud otherwise. The user can pin either.
+     * The endpoint, the credential and the model id arrive with the goal, so
+     * the run is planned by the model the user configured, and the egress guard
+     * inside it carries the consent that run was started with (`I11`). The
+     * router is `D2`: local when a qualifying model is installed and fits the
+     * budget, otherwise cloud, and a pin always wins.
      */
-    public fun brain(egress: ContentEgressGuard): BrainPort {
+    public fun brain(config: BrainConfig): BrainPort {
         val cloud = CloudBrain(
-            transport = OkHttpTransport(),
-            baseUrl = cloudBaseUrl(),
-            apiKey = cloudApiKey(),
-            modelId = cloudModelId(),
-            egress = egress,
+            transport = transport,
+            baseUrl = config.baseUrl,
+            apiKey = config.apiKey,
+            modelId = config.modelId,
+            egress = ContentEgressGuard(spectatingEnabled = config.screenTextEgress),
         )
 
         return BrainRouter(
             local = null,
             cloud = cloud,
+            pin = config.pin,
             localGate = LocalModelGate { LOCAL_MODEL_INSTALLED },
         )
     }
@@ -131,26 +146,29 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     /**
      * Builds everything and starts the runtime.
      *
-     * This is what the application calls, once, when it starts.
+     * This is what the agent service calls when it is created, once per process.
+     * The brain is not built here: it is built per run, from the configuration
+     * that run arrives with, because the consent to send screen text is the
+     * user's decision for that run (`I11`).
      */
     public fun start(): AgentRuntimeFacade {
         val root = sandboxRoot()
         val storage = storageQuota()
         val workspace = workspace(root, storage)
         val store = store()
-        val egress = ContentEgressGuard(spectatingEnabled = false)
         val bridge = AccessibilityBridgeClient(context)
         bridge.connect()
 
         return AgentRuntimeFacade(
             environment = environment(bridge),
-            brain = brain(egress),
+            brains = BrainFactory { config -> brain(config) },
             store = store,
             ledger = ledger(workspace),
             approvals = approvals(store),
             policy = policy(),
             quota = quota(),
             storage = storage,
+            indicator = bridge,
         )
     }
 
@@ -163,23 +181,27 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
         return ((info.totalMem - info.availMem) / BYTES_PER_MIB).toInt()
     }
 
-    private fun cloudBaseUrl(): String = settings().getString("cloud_brain_url", DEFAULT_CLOUD_URL) ?: DEFAULT_CLOUD_URL
-
-    private fun cloudApiKey(): String = settings().getString("cloud_brain_key", "") ?: ""
-
-    private fun cloudModelId(): String = settings().getString("cloud_brain_model", DEFAULT_CLOUD_MODEL) ?: DEFAULT_CLOUD_MODEL
-
-    private fun settings(): android.content.SharedPreferences = context.getSharedPreferences("lumen_settings", Context.MODE_PRIVATE)
-
     public companion object {
         /** The directory the sandbox lives in, inside the app's own storage. */
         public const val SANDBOX_DIRECTORY: String = "sandbox"
 
-        /** The default cloud brain endpoint. */
+        /**
+         * The endpoint the setup screen suggests when there is nothing saved.
+         *
+         * It is a shape, not a service: `api.lumen.app` is not running, and a
+         * run goes to whatever endpoint the user typed. Any endpoint that
+         * answers `POST {base}/chat/completions` in the chat-completions shape
+         * will do.
+         */
         public const val DEFAULT_CLOUD_URL: String = "https://api.lumen.app/v1"
 
-        /** The default cloud model. The model id is pinned, so a provider-side
-         *  swap cannot silently change the agent's behaviour. */
+        /**
+         * The model the setup screen suggests when there is nothing saved.
+         *
+         * The model id a run actually uses is the one in its goal: the id is
+         * pinned per run so that a provider-side swap cannot silently change
+         * the agent's behaviour.
+         */
         public const val DEFAULT_CLOUD_MODEL: String = "lumen-planner-v1"
 
         /** The memory probe reads bytes; every quota in `AGENTS.md` §2 is in MiB. */

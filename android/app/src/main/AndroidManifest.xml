@@ -20,9 +20,11 @@
         android:theme="@style/Theme.Lumen">
 
         <!--
-            The console lives in the :ui process. The AccessibilityService is
-            declared here in M6 (TASK.md); it is intentionally absent in M0 so
-            that the permission set golden test (G-06) has a stable baseline.
+            The console lives in the :ui process. The AccessibilityService and
+            the bridge service it hands to the agent are declared in
+            platform/accessibility's own manifest and merge into this
+            application; the agent runtime service is declared in the agent
+            module and runs in the :agent process.
         -->
 
         <activity

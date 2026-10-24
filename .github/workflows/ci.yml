@@ -93,7 +93,11 @@ jobs:
     name: Installable APKs
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: android
+    # Deliberately not gated on the `android` job. A lint or detekt finding is a
+    # style debt item, not a broken build, and the thing someone wants to put on
+    # a phone is the APK: with `needs: android` here, one long line in a
+    # composable stops an installable artifact from existing at all.
+    needs: []
     defaults:
       run:
         working-directory: android
@@ -186,7 +190,14 @@ jobs:
           arch: x86_64
           cores: 2
           ram-size: 4096M
-          timeout-boot: 600
+          # The input is `emulator-boot-timeout`; `timeout-boot` is not an input
+          # of this action, so it was ignored and the boot kept the default.
+          emulator-boot-timeout: 600000
+          # The action runs its script from its own `working-directory` input,
+          # not from the job's `defaults.run` — and the Gradle root is `android/`,
+          # so without this the step looked for ./gradlew in the repo root and
+          # failed with 127 before the tests could run.
+          working-directory: android
           script: ./gradlew connectedDebugAndroidTest --no-daemon --continue
 
       - name: Upload the instrumented reports

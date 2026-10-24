@@ -62,14 +62,25 @@ public data class TraceLine(val text: String, val kind: String = "note")
 public data class ApprovalCard(val approvalId: String, val title: String, val detail: String, val riskClass: String)
 
 /**
+ * The phases a run ends in.
+ *
+ * The console offers the goal field again in these phases: the runtime holds
+ * one run at a time and refuses a second goal while one is live, so a screen
+ * that only offered *Stop* after a finished run would have no way to start the
+ * next one.
+ */
+private val TERMINAL_PHASES: Set<String> = setOf("DONE", "FAILED", "ABORTED")
+
+/**
  * The console.
  *
  * The console is a view. It holds no run state, it renders what the agent
  * process tells it, and every control on it is an explicit request.
  *
- * There is no takeover control on this screen yet: [ConsoleState.takeoverActive]
- * arrives with the state and nothing on this view reads it, so the callback
- * would be a parameter no control can invoke. The web console is where a
+ * [onStop] is the in-app half of `I12`: the run is abortable from the screen
+ * the user is looking at, and the runtime notification carries the same stop.
+ * There is no takeover control here yet: [ConsoleState.takeoverActive] arrives
+ * with the state and nothing on this view reads it. The web console is where a
  * takeover is requested.
  */
 @Composable
@@ -78,6 +89,7 @@ public fun LumenConsole(
     onStart: (String) -> Unit,
     onApprove: (String) -> Unit,
     onDeny: (String) -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goal by remember { mutableStateOf("") }
@@ -108,7 +120,7 @@ public fun LumenConsole(
 
             BudgetPanel(state)
 
-            if (state.phase == "IDLE") {
+            if (state.phase == "IDLE" || state.phase in TERMINAL_PHASES) {
                 GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -130,6 +142,44 @@ public fun LumenConsole(
                         }
                     }
                 }
+            } else {
+                RunningControl(state = state, onStop = onStop)
+            }
+        }
+    }
+}
+
+/**
+ * The control shown while a run is live: what the agent is doing now, and the
+ * stop.
+ *
+ * The stop is unconditional. `I12` says the user can abort within one action
+ * boundary, so the control is present in every phase that is not idle, and the
+ * request it sends is honoured whatever run id the runtime is holding.
+ */
+@Composable
+private fun RunningControl(state: ConsoleState, onStop: () -> Unit) {
+    GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.currentIntent.ifBlank { "running" },
+                    color = Color(GlassTokens.TEXT_PRIMARY),
+                    fontSize = 14.sp,
+                )
+                if (state.currentReason.isNotBlank()) {
+                    Text(
+                        text = state.currentReason,
+                        color = Color(GlassTokens.TEXT_SECONDARY),
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            androidx.compose.material3.OutlinedButton(onClick = onStop) {
+                Text("Stop")
             }
         }
     }
