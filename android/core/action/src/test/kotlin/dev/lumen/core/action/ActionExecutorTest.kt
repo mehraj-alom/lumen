@@ -10,6 +10,7 @@ import dev.lumen.core.model.Reason
 import dev.lumen.core.model.RelativePoint
 import dev.lumen.core.model.RunId
 import dev.lumen.core.model.StepId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -111,10 +112,7 @@ class ActionExecutorTest {
         val executor = LedgeredActionExecutor(
             delegate = delegate,
             ledger = ActionLedger(FakeLedgerSink()),
-            runId = runId,
-            stepId = stepId,
-            preState = { "before" },
-            startedAtMs = 0L,
+            entry = staged(preState = "before"),
         )
 
         executor.dispatch(Action.Tap(RelativePoint(0.5), RelativePoint(0.5)))
@@ -130,10 +128,7 @@ class ActionExecutorTest {
         val executor = LedgeredActionExecutor(
             delegate = delegate,
             ledger = ActionLedger(sink),
-            runId = runId,
-            stepId = stepId,
-            preState = { "before" },
-            startedAtMs = 0L,
+            entry = staged(preState = "before"),
         )
 
         val result = executor.dispatch(Action.Tap(RelativePoint(0.5), RelativePoint(0.5)))
@@ -144,16 +139,28 @@ class ActionExecutorTest {
     }
 
     @Test
+    fun `a cancellation during the write is a cancellation, not a denial`() = runTest {
+        val ledger = ActionLedger(object : LedgerSink {
+            override suspend fun append(entry: ActionLedgerEntry): Unit = throw CancellationException("the run was cancelled")
+
+            override suspend fun isHealthy(): Boolean = true
+        })
+
+        val failure = runCatching { ledger.record(entry("a")) }.exceptionOrNull()
+
+        // An aborted run is not a ledger that refused: turning the one into
+        // the other would report an abort as an internal failure (I12).
+        assertThat(failure).isInstanceOf(CancellationException::class.java)
+    }
+
+    @Test
     fun `the pre-state is recorded before the action runs`() = runTest {
         val delegate = FakeActionExecutor()
         val sink = FakeLedgerSink()
         val executor = LedgeredActionExecutor(
             delegate = delegate,
             ledger = ActionLedger(sink),
-            runId = runId,
-            stepId = stepId,
-            preState = { "the screen before" },
-            startedAtMs = 1234L,
+            entry = staged(preState = "the screen before", startedAtMs = 1234L),
         )
 
         executor.dispatch(Action.PressEnter)
@@ -162,6 +169,7 @@ class ActionExecutorTest {
         val entry = sink.entries.first()
         assertThat(entry.preState).isEqualTo("the screen before")
         assertThat(entry.action).isEqualTo(Action.PressEnter)
+        assertThat(entry.reason.text).isEqualTo("why the fake acted")
         assertThat(entry.runId).isEqualTo(runId)
         assertThat(entry.stepId).isEqualTo(stepId)
         assertThat(entry.startedAtMs).isEqualTo(1234L)
@@ -195,10 +203,7 @@ class ActionExecutorTest {
         val executor = LedgeredActionExecutor(
             delegate = delegate,
             ledger = ActionLedger(FakeLedgerSink()),
-            runId = runId,
-            stepId = stepId,
-            preState = { null },
-            startedAtMs = 0L,
+            entry = staged(),
         )
 
         val result = executor.dispatch(Action.PressEnter)
@@ -214,10 +219,7 @@ class ActionExecutorTest {
         val executor = LedgeredActionExecutor(
             delegate = delegate,
             ledger = ActionLedger(FakeLedgerSink()),
-            runId = runId,
-            stepId = stepId,
-            preState = { null },
-            startedAtMs = 0L,
+            entry = staged(),
         )
 
         val result = executor.dispatch(Action.PressEnter)
@@ -241,5 +243,15 @@ class ActionExecutorTest {
         reason = Reason.planner(reason),
         preState = null,
         startedAtMs = 0L,
+    )
+
+    /** An entry staged before the device is touched: the action is filled in at dispatch. */
+    private fun staged(preState: String? = null, startedAtMs: Long = 0L) = ActionLedgerEntry(
+        runId = runId,
+        stepId = stepId,
+        action = Action.PressEnter,
+        reason = Reason.planner("why the fake acted"),
+        preState = preState,
+        startedAtMs = startedAtMs,
     )
 }

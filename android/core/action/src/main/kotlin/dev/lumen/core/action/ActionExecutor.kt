@@ -130,11 +130,16 @@ public class ActionValidator(
     }
 }
 
-/** One recorded action, with the state that preceded it. */
+/**
+ * One recorded action, with the state that preceded it.
+ *
+ * [seq] belongs to the ledger, which stamps the entry as it takes it, so a
+ * caller writing an entry down before it is recorded leaves it alone.
+ */
 public data class ActionLedgerEntry(
     val runId: RunId,
     val stepId: StepId,
-    val seq: Long,
+    val seq: Long = 0L,
     val action: Action,
     val reason: Reason,
     val preState: String?,
@@ -218,28 +223,21 @@ public class ActionLedger(private val sink: LedgerSink) {
  *
  * This is the composition that makes invariant I6 true by construction: there
  * is no way to reach the delegate without going through the ledger.
+ *
+ * The [entry] is the record the step leaves behind — the run, the step, the
+ * reason the planner gave (invariant I9), the state the action is taken from,
+ * and the time it was staged. The executor writes it with the action it is
+ * about to dispatch, so the record cannot describe an action other than the
+ * one that ran.
  */
 public class LedgeredActionExecutor(
     private val delegate: ActionExecutor,
     private val ledger: ActionLedger,
-    private val runId: RunId,
-    private val stepId: StepId,
-    private val preState: suspend () -> String?,
-    private val startedAtMs: Long,
+    private val entry: ActionLedgerEntry,
 ) : ActionExecutor {
 
     override suspend fun dispatch(action: Action): ActionResult {
-        val recorded = ledger.record(
-            ActionLedgerEntry(
-                runId = runId,
-                stepId = stepId,
-                seq = 0L,
-                action = action,
-                reason = Reason.system("recorded before dispatch"),
-                preState = preState(),
-                startedAtMs = startedAtMs,
-            ),
-        )
+        val recorded = ledger.record(entry.copy(action = action))
 
         if (!recorded) {
             return ActionResult.failed(
