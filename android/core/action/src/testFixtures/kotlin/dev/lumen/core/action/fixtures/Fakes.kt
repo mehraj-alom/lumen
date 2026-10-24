@@ -14,9 +14,7 @@ import dev.lumen.core.model.Observation
  * The fake is the reason the whole loop can be tested without a device. It
  * can also be told to fail, which is how the loop's error paths are covered.
  */
-public class FakeActionExecutor(
-    private val observation: Observation? = null,
-) : ActionExecutor {
+public class FakeActionExecutor(private val observation: Observation? = null) : ActionExecutor {
 
     /** Every action that was dispatched, in order. */
     public val dispatched: MutableList<Action> = mutableListOf()

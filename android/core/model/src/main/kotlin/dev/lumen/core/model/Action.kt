@@ -72,11 +72,7 @@ public sealed interface Action {
     /** A long press at a relative position. */
     @Serializable
     @SerialName("long_press")
-    public data class LongPress(
-        val x: RelativePoint,
-        val y: RelativePoint,
-        val durationMs: Long = 600L,
-    ) : Action {
+    public data class LongPress(val x: RelativePoint, val y: RelativePoint, val durationMs: Long = 600L) : Action {
         init {
             require(durationMs > 0) { "a long press must have a positive duration" }
         }
@@ -104,11 +100,7 @@ public sealed interface Action {
     /** A scroll along a direction. */
     @Serializable
     @SerialName("scroll")
-    public data class Scroll(
-        val direction: ScrollDirection,
-        val amount: Double = 0.5,
-        val lane: RelativePoint? = null,
-    ) : Action {
+    public data class Scroll(val direction: ScrollDirection, val amount: Double = 0.5, val lane: RelativePoint? = null) : Action {
         init {
             require(amount > 0.0) { "a scroll must have a positive amount" }
         }
@@ -125,11 +117,7 @@ public sealed interface Action {
      */
     @Serializable
     @SerialName("drag")
-    public data class Drag(
-        val path: List<RelativePoint>,
-        val durationMs: Long = 500L,
-        val easing: Easing = Easing.NATURAL,
-    ) : Action {
+    public data class Drag(val path: List<RelativePoint>, val durationMs: Long = 500L, val easing: Easing = Easing.NATURAL) : Action {
         init {
             require(path.size >= 2) { "a drag needs at least two points" }
             require(durationMs > 0) { "a drag must have a positive duration" }
@@ -181,10 +169,7 @@ public sealed interface Action {
     /** Clicks the first, or the n-th, node whose label matches. */
     @Serializable
     @SerialName("click_text")
-    public data class ClickText(
-        val text: String,
-        val occurrence: Int = 0,
-    ) : Action {
+    public data class ClickText(val text: String, val occurrence: Int = 0) : Action {
         init {
             require(text.isNotBlank()) { "a click target must not be blank" }
             require(occurrence >= 0) { "an occurrence index cannot be negative" }
@@ -225,11 +210,8 @@ public sealed interface Action {
     /** Reads the current screen. */
     @Serializable
     @SerialName("observe_screen")
-    public data class ObserveScreen(
-        val includeScreenshot: Boolean = false,
-        val includeOverlays: Boolean = true,
-        val maxNodes: Int = 400,
-    ) : Action {
+    public data class ObserveScreen(val includeScreenshot: Boolean = false, val includeOverlays: Boolean = true, val maxNodes: Int = 400) :
+        Action {
         init {
             require(maxNodes > 0) { "a node budget must be positive" }
         }

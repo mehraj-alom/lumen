@@ -1,7 +1,7 @@
 package dev.lumen.core.quota
 
-import kotlinx.coroutines.sync.Semaphore
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.sync.Semaphore
 
 /** A failure raised by the quota engine. */
 public sealed class QuotaError(message: String) : Exception(message) {
@@ -11,13 +11,10 @@ public sealed class QuotaError(message: String) : Exception(message) {
         QuotaError("the agent runs at most $limit workers, and they are all busy")
 
     /** A reservation was refused. */
-    public data class ReservationRefused(
-        val reason: RefusalReason,
-        val requestedMiB: Int,
-        val availableMiB: Int,
-    ) : QuotaError(
-        "the request for $requestedMiB MiB was refused ($reason); $availableMiB MiB is available",
-    )
+    public data class ReservationRefused(val reason: RefusalReason, val requestedMiB: Int, val availableMiB: Int) :
+        QuotaError(
+            "the request for $requestedMiB MiB was refused ($reason); $availableMiB MiB is available",
+        )
 }
 
 /**
@@ -28,9 +25,7 @@ public sealed class QuotaError(message: String) : Exception(message) {
  * wait is a request that would blow the wall-clock budget, and the caller
  * needs to know that immediately so it can shed load instead.
  */
-public class WorkerPool(
-    public val maxWorkers: Int = DEFAULT_MAX_WORKERS,
-) {
+public class WorkerPool(public val maxWorkers: Int = DEFAULT_MAX_WORKERS) {
     private val semaphore = Semaphore(maxWorkers)
     private val inFlight = AtomicInteger(0)
 

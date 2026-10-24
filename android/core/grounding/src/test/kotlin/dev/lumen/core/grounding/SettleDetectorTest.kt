@@ -1,14 +1,14 @@
 package dev.lumen.core.grounding
 
+import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.SettleKind
+import kotlin.random.Random
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
-import kotlin.random.Random
 import org.junit.Test
-import com.google.common.truth.Truth.assertThat
 
 /** A clock the test drives. */
 internal class FakeUiEventClock(private val now: () -> Long) : UiEventClock {
@@ -65,7 +65,9 @@ class SettleDetectorTest {
                 delay(20)
             }
         }
-        val detector = SettleDetector(clock, sampler = { snapshot(10) })
+        // No readable tree: the shape signal has nothing to testify to, so
+        // only the event stream speaks and it never goes quiet.
+        val detector = SettleDetector(clock, sampler = { null })
 
         val result = detector.awaitSettled(startedAtMs = 0, kind = SettleKind.NON_SCROLL)
 
@@ -176,18 +178,24 @@ class SettleDetectorTest {
                     if (random.nextInt(3) == 0) {
                         clock.uiEventAt = testScheduler.currentTime
                     }
-                    delay(random.nextInt(30) + 1)
+                    delay((random.nextInt(30) + 1).toLong())
                 }
             }
-            var calls = 0
             val detector = SettleDetector(clock, sampler = { snapshot(random.nextInt(20)) })
 
-            val result = detector.awaitSettled(startedAtMs = 0, kind = SettleKind.NON_SCROLL)
+            // The scheduler is shared by all the seeds, so virtual time has
+            // already advanced when a later seed starts. The wait is anchored
+            // to the moment it begins, not to the zero of the first seed.
+            val result = detector.awaitSettled(
+                startedAtMs = testScheduler.currentTime,
+                kind = SettleKind.NON_SCROLL,
+            )
 
-            ticker.cancel()
+            ticker.cancelAndJoin()
             assertThat(result.durationMs).isAtMost(2_000)
-            assertThat(result.reachedCap).implies(result.durationMs >= 2_000)
-            calls++
+            if (result.reachedCap) {
+                assertThat(result.durationMs).isAtLeast(2_000)
+            }
         }
     }
 

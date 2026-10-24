@@ -141,8 +141,7 @@ private class FakeRuntime {
         return component
     }
 
-    fun component(category: RamCategory): FakeComponent =
-        components.first { it.category == category }
+    fun component(category: RamCategory): FakeComponent = components.first { it.category == category }
 
     fun setExtra(mib: Int) {
         extraMiB = mib

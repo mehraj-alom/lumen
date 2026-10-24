@@ -126,10 +126,9 @@ public class NodeIndex(private val snapshot: TreeSnapshot) {
     }
 
     /** The label of a node: its text, or its content description, or neither. */
-    public fun labelOf(node: NodeRef): String =
-        node.text?.takeIf { it.isNotBlank() }
-            ?: node.contentDescription?.takeIf { it.isNotBlank() }
-            ?: ""
+    public fun labelOf(node: NodeRef): String = node.text?.takeIf { it.isNotBlank() }
+        ?: node.contentDescription?.takeIf { it.isNotBlank() }
+        ?: ""
 
     /**
      * The node at a relative point, or null.
@@ -137,13 +136,12 @@ public class NodeIndex(private val snapshot: TreeSnapshot) {
      * The deepest node whose bounds contain the point wins, so a button
      * inside a card is found before the card.
      */
-    public fun nodeAt(x: Double, y: Double): NodeRef? =
-        snapshot.nodes
-            .filter { node ->
-                val bounds = node.bounds ?: return@filter false
-                x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom
-            }
-            .maxByOrNull { node -> node.depth }
+    public fun nodeAt(x: Double, y: Double): NodeRef? = snapshot.nodes
+        .filter { node ->
+            val bounds = node.bounds ?: return@filter false
+            x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom
+        }
+        .maxByOrNull { node -> node.depth }
 }
 
 /**
@@ -154,10 +152,15 @@ public class NodeIndex(private val snapshot: TreeSnapshot) {
  * stable across implementations.
  */
 internal fun fnv1a(value: String): String {
-    var hash = -0x340d631b7bdddcdbL
+    var hash = FNV_OFFSET_BASIS
     for (character in value) {
         hash = hash xor character.code.toLong()
-        hash *= 0x100000001b3L
+        hash *= FNV_PRIME
     }
     return java.lang.Long.toHexString(hash)
 }
+
+// The FNV-1a 64-bit parameters, named so the algorithm reads as the spec
+// states it. These are fixed constants of the hash, not tuning values.
+private const val FNV_OFFSET_BASIS: Long = -0x340d631b7bdddcdbL
+private const val FNV_PRIME: Long = 0x100000001b3L

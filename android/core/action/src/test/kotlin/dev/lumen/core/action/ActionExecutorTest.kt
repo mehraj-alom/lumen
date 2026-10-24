@@ -1,5 +1,6 @@
 package dev.lumen.core.action
 
+import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.action.fixtures.FakeActionExecutor
 import dev.lumen.core.action.fixtures.FakeLedgerSink
 import dev.lumen.core.model.Action
@@ -11,7 +12,6 @@ import dev.lumen.core.model.RunId
 import dev.lumen.core.model.StepId
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
-import com.google.common.truth.Truth.assertThat
 
 class ActionValidatorTest {
 
@@ -102,8 +102,8 @@ class ActionValidatorTest {
 
 class ActionExecutorTest {
 
-    private val runId = RunId("01JBX0000000000000000000001")
-    private val stepId = StepId("01JBX0000000000000000000002")
+    private val runId = RunId("01JBX000000000000000000001")
+    private val stepId = StepId("01JBX000000000000000000002")
 
     @Test
     fun `T-DSP-04 every action goes through the one funnel`() = runTest {

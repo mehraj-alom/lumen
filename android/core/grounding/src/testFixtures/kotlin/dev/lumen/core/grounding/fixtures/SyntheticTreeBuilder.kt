@@ -135,8 +135,7 @@ public class SyntheticTreeBuilder(private val app: String = "com.example.app") {
         }
 
         /** A canvas-rendered screen: no nodes at all. */
-        public fun canvasRegion(): TreeSnapshot =
-            SyntheticTreeBuilder().build()
+        public fun canvasRegion(): TreeSnapshot = SyntheticTreeBuilder().build()
 
         /** A node whose content description carries the text. */
         public fun contentDescriptionOnly(): TreeSnapshot {

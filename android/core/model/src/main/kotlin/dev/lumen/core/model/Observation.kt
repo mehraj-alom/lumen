@@ -37,12 +37,7 @@ public data class NodeRef(
 
 /** A window that is drawn over the application. */
 @Serializable
-public data class OverlayInfo(
-    val packageName: String,
-    val type: String,
-    val title: String? = null,
-    val bounds: RelativeRect? = null,
-)
+public data class OverlayInfo(val packageName: String, val type: String, val title: String? = null, val bounds: RelativeRect? = null)
 
 /** A reference to a captured frame held in the sandbox. */
 @Serializable
@@ -56,13 +51,7 @@ public data class ScreenshotRef(
 
 /** How the screen settled after an action. */
 @Serializable
-public data class SettleInfo(
-    val settled: Boolean,
-    val kind: SettleKind,
-    val durationMs: Long,
-    val nodeCount: Int,
-    val quietMs: Long = 0L,
-)
+public data class SettleInfo(val settled: Boolean, val kind: SettleKind, val durationMs: Long, val nodeCount: Int, val quietMs: Long = 0L)
 
 /** The kind of change the settle detector was waiting for. */
 @Serializable

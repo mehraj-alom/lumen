@@ -39,12 +39,10 @@ public object NodeMatcher {
     }
 
     /** The nodes with a given view id. */
-    public fun byViewId(index: NodeIndex, viewId: String): List<NodeRef> =
-        index.nodesWithViewId(viewId)
+    public fun byViewId(index: NodeIndex, viewId: String): List<NodeRef> = index.nodesWithViewId(viewId)
 
     /** The nodes of a given class name. */
-    public fun byClass(index: NodeIndex, className: String): List<NodeRef> =
-        index.nodesOfClass(className)
+    public fun byClass(index: NodeIndex, className: String): List<NodeRef> = index.nodesOfClass(className)
 
     /**
      * The nodes that look like a text field.
@@ -68,10 +66,9 @@ public object NodeMatcher {
             ?: editableFields(index).firstOrNull()
 
     /** The nodes that are web content. */
-    public fun webNodes(index: NodeIndex): List<NodeRef> =
-        index.source.nodes.filter { node ->
-            node.className.startsWith("android.webkit") || node.className.startsWith("chrome://")
-        }
+    public fun webNodes(index: NodeIndex): List<NodeRef> = index.source.nodes.filter { node ->
+        node.className.startsWith("android.webkit") || node.className.startsWith("chrome://")
+    }
 
     /**
      * The node at a relative point, with the clickable ancestor resolved.

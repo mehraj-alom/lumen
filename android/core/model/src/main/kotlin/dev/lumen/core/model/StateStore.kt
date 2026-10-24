@@ -118,12 +118,7 @@ public enum class ApprovalState {
 
 /** A human-readable projection of the action an approval covers. */
 @Serializable
-public data class ActionPreview(
-    val kind: String,
-    val label: String? = null,
-    val text: String? = null,
-    val target: String? = null,
-)
+public data class ActionPreview(val kind: String, val label: String? = null, val text: String? = null, val target: String? = null)
 
 /** One movement in the budget ledger. */
 public data class BudgetEntry(

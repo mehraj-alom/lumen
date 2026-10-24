@@ -84,11 +84,7 @@ public sealed interface Escalation {
 }
 
 /** A request to stop the run because a quota cannot be satisfied. */
-public data class HardStop(
-    val reason: String,
-    val measuredMiB: Int,
-    val limitMiB: Int,
-)
+public data class HardStop(val reason: String, val measuredMiB: Int, val limitMiB: Int)
 
 /** The outcome of one watchdog tick. */
 public data class QuotaTick(

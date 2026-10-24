@@ -3,6 +3,7 @@ package dev.lumen.core.brain
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.RiskClass
 import dev.lumen.core.model.Verdict
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
@@ -48,13 +49,12 @@ public interface NativeInference {
  * the remaining RAM budget is never loaded, and the router escalates to the
  * cloud instead.
  */
-public class LocalBrain(
-    private val inference: NativeInference,
-    private val promptVersion: String = "1",
-    private val maxTokens: Int = DEFAULT_MAX_TOKENS,
-) : BrainPort {
+public class LocalBrain(private val inference: NativeInference, private val maxTokens: Int = DEFAULT_MAX_TOKENS) : BrainPort {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     override val route: BrainRoute get() = BrainRoute.LOCAL
 
@@ -73,10 +73,18 @@ public class LocalBrain(
     override suspend fun critique(request: CritiqueRequest): Critique {
         val prompt = buildCritiquePrompt(request)
         val reply = generate(prompt) ?: return Critique(Verdict.FAIL, "the local model could not answer")
+        return decodeCritique(reply)
+    }
 
+    private fun decodeCritique(reply: String): Critique {
         val envelope = try {
             json.decodeFromString(CritiqueReply.serializer(), reply)
-        } catch (error: Exception) {
+        } catch (ignored: SerializationException) {
+            // The local model is allowed to answer nonsense: the failure is
+            // deliberately converted into a FAIL verdict, not propagated.
+            // The parser's own message quotes the reply, and a reply can
+            // carry screen text that may not travel unredacted, so the
+            // detail is dropped on purpose here and in `parsePlan` (§5).
             return Critique(Verdict.FAIL, "the local reply did not match the critique envelope")
         }
 
@@ -94,7 +102,8 @@ public class LocalBrain(
     private fun parsePlan(reply: String): BrainReply {
         val envelope = try {
             json.decodeFromString(PlanReply.serializer(), reply)
-        } catch (error: Exception) {
+        } catch (ignored: SerializationException) {
+            // The detail is dropped with a reason; see `decodeCritique`.
             return BrainReply("the local reply did not match the plan envelope", emptyList(), reply)
         }
 
@@ -150,13 +159,7 @@ public class LocalBrain(
 public object LocalModelRegistry {
 
     /** A model the user may install. */
-    public data class Entry(
-        val id: String,
-        val role: Role,
-        val fileName: String,
-        val residentMiB: Int,
-        val contextTokens: Int,
-    )
+    public data class Entry(val id: String, val role: Role, val fileName: String, val residentMiB: Int, val contextTokens: Int)
 
     /** What a model is for. */
     public enum class Role {

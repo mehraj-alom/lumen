@@ -96,6 +96,5 @@ public object Assertions {
     }
 
     /** Whether every assertion in [assertions] holds for [observation]. */
-    public fun allHold(assertions: List<Assertion>, observation: Observation): Boolean =
-        assertions.all { holds(it, observation) }
+    public fun allHold(assertions: List<Assertion>, observation: Observation): Boolean = assertions.all { holds(it, observation) }
 }

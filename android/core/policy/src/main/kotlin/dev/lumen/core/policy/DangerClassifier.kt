@@ -4,6 +4,7 @@ import dev.lumen.core.grounding.NodeIndex
 import dev.lumen.core.grounding.NodeMatcher
 import dev.lumen.core.grounding.TreeSnapshot
 import dev.lumen.core.model.Action
+import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RiskClass
 
@@ -36,20 +37,25 @@ public class DangerClassifier {
             ),
         )
 
-        val label = labelFor(action, index)
+        return riskFor(action, index, labelFor(action, index))
+    }
 
-        return when {
-            isCredential(action, index) -> RiskClass.CREDENTIAL
-            labelMatches(label, PAYMENT_LABELS) -> RiskClass.PAYMENT
-            hasPaymentSurface(index) -> RiskClass.PAYMENT
-            labelMatches(label, DELETE_LABELS) -> RiskClass.DELETE
-            labelMatches(label, PUBLISH_LABELS) -> RiskClass.PUBLISH
-            labelMatches(label, PERMISSION_LABELS) -> RiskClass.PERMISSION
-            labelMatches(label, COMMUNICATION_LABELS) -> RiskClass.COMMUNICATION
-            labelMatches(label, ACCOUNT_LABELS) -> RiskClass.ACCOUNT
-            labelMatches(label, LEGAL_LABELS) -> RiskClass.LEGAL
-            else -> RiskClass.NONE
-        }
+    /**
+     * The first matching risk class, ordered from the most consequential to
+     * the least. The checks are independent and the first match wins: a
+     * surface that is both a payment and a publish is a payment.
+     */
+    private fun riskFor(action: Action, index: NodeIndex, label: String?): RiskClass = when {
+        isCredential(action, index) -> RiskClass.CREDENTIAL
+        labelMatches(label, PAYMENT_LABELS) -> RiskClass.PAYMENT
+        hasPaymentSurface(index) -> RiskClass.PAYMENT
+        labelMatches(label, DELETE_LABELS) -> RiskClass.DELETE
+        labelMatches(label, PUBLISH_LABELS) -> RiskClass.PUBLISH
+        labelMatches(label, PERMISSION_LABELS) -> RiskClass.PERMISSION
+        labelMatches(label, COMMUNICATION_LABELS) -> RiskClass.COMMUNICATION
+        labelMatches(label, ACCOUNT_LABELS) -> RiskClass.ACCOUNT
+        labelMatches(label, LEGAL_LABELS) -> RiskClass.LEGAL
+        else -> RiskClass.NONE
     }
 
     /**
@@ -63,15 +69,15 @@ public class DangerClassifier {
         is Action.Tap -> nodeLabel(index, action.x.fraction, action.y.fraction)
         is Action.DoubleTap -> nodeLabel(index, action.x.fraction, action.y.fraction)
         is Action.LongPress -> nodeLabel(index, action.x.fraction, action.y.fraction)
-        is Action.ClickText -> NodeMatcher.byTextOccurrence(index, action.text, action.occurrence)
-            ?.let { index.clickableAncestor(it) ?: it }
-            ?.let { index.labelOf(it) }
-        is Action.ClickById -> index.nodesWithViewId(action.viewId).firstOrNull()
-            ?.let { index.clickableAncestor(it) ?: it }
-            ?.let { index.labelOf(it) }
+        is Action.ClickText -> labelledNode(index, NodeMatcher.byTextOccurrence(index, action.text, action.occurrence))
+        is Action.ClickById -> labelledNode(index, index.nodesWithViewId(action.viewId).firstOrNull())
         is Action.InputText -> NodeMatcher.focusedField(index)?.let { index.labelOf(it) }
         else -> null
     }
+
+    /** The label of [node], resolved to its clickable ancestor when it has one. */
+    private fun labelledNode(index: NodeIndex, node: NodeRef?): String? =
+        node?.let { index.clickableAncestor(it) ?: it }?.let { index.labelOf(it) }
 
     /** Whether the action types into a secret. */
     private fun isCredential(action: Action, index: NodeIndex): Boolean {
@@ -99,11 +105,10 @@ public class DangerClassifier {
      * "pay" is not a payment surface, and treating it as one would turn every
      * action on the page into an approval. A card field is.
      */
-    private fun hasPaymentSurface(index: NodeIndex): Boolean =
-        index.source.nodes.any { node ->
-            val label = node.text ?: node.contentDescription ?: return@any false
-            labelMatches(label, PAYMENT_SURFACE_LABELS)
-        }
+    private fun hasPaymentSurface(index: NodeIndex): Boolean = index.source.nodes.any { node ->
+        val label = node.text ?: node.contentDescription ?: return@any false
+        labelMatches(label, PAYMENT_SURFACE_LABELS)
+    }
 
     public companion object {
         /** Words that mean money is about to move. */
@@ -119,8 +124,14 @@ public class DangerClassifier {
          * field means the screen is a payment form whatever the user taps.
          */
         public val PAYMENT_SURFACE_LABELS: Set<String> = setOf(
-            "card number", "cvv", "cvc", "expiry date", "expiration date",
-            "billing address", "credit card", "name on card",
+            "card number",
+            "cvv",
+            "cvc",
+            "expiry date",
+            "expiration date",
+            "billing address",
+            "credit card",
+            "name on card",
         )
 
         /** Words that mean something will be destroyed. */
@@ -137,12 +148,25 @@ public class DangerClassifier {
 
         /** Words that mean a permission is being granted. */
         public val PERMISSION_LABELS: Set<String> = setOf(
-            "allow", "grant", "enable", "permit", "install", "trust", "turn on",
+            "allow",
+            "grant",
+            "enable",
+            "permit",
+            "install",
+            "trust",
+            "turn on",
         )
 
         /** Words that mean a person will be reached. */
         public val COMMUNICATION_LABELS: Set<String> = setOf(
-            "call", "ring", "dial", "join", "message", "sms", "voice call", "start call",
+            "call",
+            "ring",
+            "dial",
+            "join",
+            "message",
+            "sms",
+            "voice call",
+            "start call",
         )
 
         /** Words that mean the account itself changes. */

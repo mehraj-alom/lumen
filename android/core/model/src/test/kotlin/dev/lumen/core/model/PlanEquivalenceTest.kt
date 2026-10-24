@@ -54,7 +54,7 @@ class PlanEquivalenceTest {
     @Test
     fun `the assertion reports the first difference`() {
         val left = plan()
-        val right = plan().copy(steps = listOf(baseStep().copy(intent = "Open the results list")))
+        val right = plan().copy(steps = listOf(baseStep().copy(intent = "Open the payment sheet")))
 
         val failure = runCatching { PlanEquivalence.assertEquivalent(left, right) }.exceptionOrNull()
 
@@ -72,7 +72,7 @@ class PlanEquivalenceTest {
     }
 
     private fun sampleId(index: Int): String {
-        val alphabet = "0123456789ABCDEFGHJKMNPQR"
+        val alphabet = Ulid.ENCODING.take(Ulid.LENGTH)
         return alphabet.dropLast(1) + alphabet[index % alphabet.length]
     }
 

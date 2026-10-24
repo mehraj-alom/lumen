@@ -1,6 +1,8 @@
 package dev.lumen.core.brain
 
 import com.google.common.truth.Truth.assertThat
+import dev.lumen.core.model.ApiError
+import dev.lumen.core.model.ErrorCode
 import dev.lumen.core.model.Goal
 import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.Observation
@@ -21,26 +23,30 @@ private class FakeTransport(var response: HttpResponse) : HttpTransport {
 
 class CloudBrainTest {
 
-    private val goal = Goal(id = RunId("01JBX0000000000000000000001"), text = "do the thing")
+    private val goal = Goal(id = RunId("01JBX000000000000000000001"), text = "do the thing")
 
-    private fun completion(content: String): String =
-        """{"choices":[{"message":{"content":${content.jsonEscape()}}}]}"""
+    private fun completion(content: String): String = """{"choices":[{"message":{"content":${content.jsonEscape()}}}]}"""
 
     private fun String.jsonEscape(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-    private fun brain(transport: FakeTransport, egress: ContentEgressGuard = ContentEgressGuard()) =
-        CloudBrain(
-            transport = transport,
-            baseUrl = "https://brain.example/v1",
-            apiKey = "key",
-            modelId = "pinned-model",
-            egress = egress,
-            retry = RetryPolicy(maxAttempts = 1),
-        )
+    private fun planJson(thought: String, vararg steps: String): String =
+        """{"plan_version":1,"thought":"$thought","steps":[${steps.joinToString(",")}]}"""
+
+    private fun brain(transport: FakeTransport, egress: ContentEgressGuard = ContentEgressGuard()) = CloudBrain(
+        transport = transport,
+        baseUrl = "https://brain.example/v1",
+        apiKey = "key",
+        modelId = "pinned-model",
+        egress = egress,
+        retry = RetryPolicy(maxAttempts = 1),
+    )
 
     @Test
     fun `a well formed reply becomes a plan`() = runTest {
-        val plan = """{"plan_version":1,"thought":"the plan","steps":[{"seq":1,"intent":"tap pay","reason":"because","action":{"tool":"click_text","args":{"text":"Pay"}},"risk_class":"none"}]}"""
+        val plan = planJson(
+            "the plan",
+            """{"seq":1,"intent":"tap pay","reason":"because","action":{"tool":"click_text","args":{"text":"Pay"}}}""",
+        )
         val transport = FakeTransport(HttpResponse(200, completion(plan)))
 
         val reply = brain(transport).plan(PlanRequest(goal = goal))
@@ -61,7 +67,10 @@ class CloudBrainTest {
 
     @Test
     fun `a reply with an unknown tool fails the step`() = runTest {
-        val plan = """{"plan_version":1,"thought":"t","steps":[{"seq":1,"intent":"i","reason":"r","action":{"tool":"launch_missiles","args":{}}}]}"""
+        val plan = planJson(
+            "t",
+            """{"seq":1,"intent":"i","reason":"r","action":{"tool":"launch_missiles","args":{}}}""",
+        )
         val transport = FakeTransport(HttpResponse(200, completion(plan)))
 
         val failure = runCatching { brain(transport).plan(PlanRequest(goal = goal)) }.exceptionOrNull()
@@ -71,7 +80,10 @@ class CloudBrainTest {
 
     @Test
     fun `a reply with bad arguments fails the step`() = runTest {
-        val plan = """{"plan_version":1,"thought":"t","steps":[{"seq":1,"intent":"i","reason":"r","action":{"tool":"tap","args":{"x":4.0,"y":0.5}}}]}"""
+        val plan = planJson(
+            "t",
+            """{"seq":1,"intent":"i","reason":"r","action":{"tool":"tap","args":{"x":4.0,"y":0.5}}}""",
+        )
         val transport = FakeTransport(HttpResponse(200, completion(plan)))
 
         val failure = runCatching { brain(transport).plan(PlanRequest(goal = goal)) }.exceptionOrNull()
@@ -130,6 +142,8 @@ class CloudBrainTest {
     }
 }
 
+private fun unavailable(message: String) = BrainUnavailable(ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = message))
+
 class RetryPolicyTest {
 
     @Test
@@ -139,7 +153,7 @@ class RetryPolicyTest {
 
         val result = policy.execute { attempt ->
             attempts++
-            if (attempt < 3) throw IllegalStateException("not yet")
+            if (attempt < 3) throw unavailable("not yet")
             "ok"
         }
 
@@ -152,10 +166,10 @@ class RetryPolicyTest {
         val policy = RetryPolicy(maxAttempts = 2, initialDelayMs = 10)
 
         val failure = runCatching {
-            policy.execute { throw IllegalStateException("always") }
+            policy.execute { throw unavailable("always") }
         }.exceptionOrNull()
 
-        assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+        assertThat(failure).isInstanceOf(BrainUnavailable::class.java)
         assertThat(failure?.message).isEqualTo("always")
     }
 
@@ -167,7 +181,7 @@ class RetryPolicyTest {
         runCatching {
             policy.execute {
                 attempts++
-                throw IllegalStateException("fatal")
+                error("fatal")
             }
         }
 

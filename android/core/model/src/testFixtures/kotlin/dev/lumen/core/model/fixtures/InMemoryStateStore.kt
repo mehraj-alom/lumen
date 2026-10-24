@@ -43,14 +43,17 @@ public class InMemoryStateStore : StateStore {
         plan.steps.forEach { steps[it.id] = it }
     }
 
-    override suspend fun loadPlan(runId: RunId): Plan? =
-        plans.entries
-            .filter { it.key.first == runId }
-            .maxByOrNull { it.key.second }
-            ?.value
+    // Step records hold the state; the stored plan is the proposal, as in RoomStateStore.
+    private fun Plan.withCurrentSteps(): Plan = copy(steps = steps.map { step -> this@InMemoryStateStore.steps[step.id] ?: step })
+
+    override suspend fun loadPlan(runId: RunId): Plan? = plans.entries
+        .filter { it.key.first == runId }
+        .maxByOrNull { it.key.second }
+        ?.value
+        ?.withCurrentSteps()
 
     override suspend fun loadPlanHistory(runId: RunId): List<Plan> =
-        plans.values.filter { it.runId == runId }.sortedBy { it.version }
+        plans.values.filter { it.runId == runId }.sortedBy { it.version }.map { it.withCurrentSteps() }
 
     override suspend fun saveStep(runId: RunId, step: Step) {
         steps[step.id] = step
@@ -65,8 +68,7 @@ public class InMemoryStateStore : StateStore {
         observations += runId to observation
     }
 
-    override suspend fun loadObservations(runId: RunId): List<Observation> =
-        observations.filter { it.first == runId }.map { it.second }
+    override suspend fun loadObservations(runId: RunId): List<Observation> = observations.filter { it.first == runId }.map { it.second }
 
     override suspend fun saveApproval(approval: ApprovalRecord) {
         approvals[approval.id] = approval
@@ -81,8 +83,7 @@ public class InMemoryStateStore : StateStore {
         ledger += entry
     }
 
-    override suspend fun loadBudgetLedger(runId: RunId): List<BudgetEntry> =
-        ledger.filter { it.runId == runId }
+    override suspend fun loadBudgetLedger(runId: RunId): List<BudgetEntry> = ledger.filter { it.runId == runId }
 
     override suspend fun loadSetting(key: String): String? = settings[key]
 

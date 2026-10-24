@@ -65,11 +65,7 @@ public enum class ErrorCode {
  * notification and the trace all describe the same event the same way.
  */
 @Serializable
-public data class ApiError(
-    val code: ErrorCode,
-    val message: String,
-    val detail: Map<String, String> = emptyMap(),
-) {
+public data class ApiError(val code: ErrorCode, val message: String, val detail: Map<String, String> = emptyMap()) {
     init {
         require(message.isNotBlank()) { "an error message must not be blank" }
     }

@@ -7,6 +7,8 @@ import dev.lumen.core.model.Observation
 import dev.lumen.core.model.Reason
 import dev.lumen.core.model.RunId
 import dev.lumen.core.model.StepId
+import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The single funnel through which every action reaches the device.
@@ -30,19 +32,11 @@ public data class ActionResult(
 ) {
     public companion object {
         /** A successful action. */
-        public fun ok(
-            action: Action,
-            observation: Observation? = null,
-            durationMs: Long = 0L,
-        ): ActionResult = ActionResult(action, ok = true, observation = observation, durationMs = durationMs)
+        public fun ok(action: Action, observation: Observation? = null, durationMs: Long = 0L): ActionResult =
+            ActionResult(action, ok = true, observation = observation, durationMs = durationMs)
 
         /** A failed action. */
-        public fun failed(
-            action: Action,
-            code: ErrorCode,
-            message: String,
-            durationMs: Long = 0L,
-        ): ActionResult = ActionResult(
+        public fun failed(action: Action, code: ErrorCode, message: String, durationMs: Long = 0L): ActionResult = ActionResult(
             action = action,
             ok = false,
             durationMs = durationMs,
@@ -58,9 +52,7 @@ public data class ActionResult(
  * not explicitly authorise. The check is enforced on the device, at the point
  * of dispatch, and not only in the planner.
  */
-public class PackageAllowlist(
-    private val allowed: Set<String> = emptySet(),
-) {
+public class PackageAllowlist(private val allowed: Set<String> = emptySet()) {
     /** Whether [packageName] may be acted on. */
     public fun allows(packageName: String): Boolean = allowed.contains(packageName)
 
@@ -155,6 +147,11 @@ public data class ActionLedgerEntry(
  * The sink must make the entry durable before it returns. An action that is
  * not durable is an action that cannot be audited, and an action that cannot
  * be audited is not dispatched.
+ *
+ * A sink reports a durability problem by throwing: `IOException` when the
+ * storage itself refused, `IllegalStateException` when the sink is not in a
+ * state to accept entries. Those are the failures [ActionLedger] turns into
+ * a denial; anything else is a defect and is allowed to surface.
  */
 public interface LedgerSink {
     /** Writes [entry] and makes it durable. */
@@ -171,9 +168,7 @@ public interface LedgerSink {
  * that preceded it. That is what makes an action reversible: the ledger says
  * what the screen looked like before the agent touched it (invariant I6).
  */
-public class ActionLedger(
-    private val sink: LedgerSink,
-) {
+public class ActionLedger(private val sink: LedgerSink) {
     private val lock = Any()
     private var sequence = 0L
 
@@ -189,7 +184,17 @@ public class ActionLedger(
         return try {
             sink.append(stamped)
             true
-        } catch (error: Exception) {
+        } catch (cancellation: CancellationException) {
+            // A cancelled run is not a ledger failure (invariant I12): the
+            // abort surfaces, it is not quietly converted into "not recorded".
+            throw cancellation
+        } catch (ignored: IOException) {
+            // Fail closed: the sink's detail is dropped on purpose, because
+            // it can quote the entry and the entry carries pre-state screen
+            // text that may not travel unredacted (§5). The boolean already
+            // carries the only decision the dispatcher needs: deny (I6).
+            false
+        } catch (ignored: IllegalStateException) {
             false
         }
     }
@@ -197,7 +202,13 @@ public class ActionLedger(
     /** Whether the ledger can currently accept entries. */
     public suspend fun isHealthy(): Boolean = try {
         sink.isHealthy()
-    } catch (error: Exception) {
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (ignored: IOException) {
+        // Same deliberate drop as in `record`: an unreachable sink is
+        // unhealthy, whatever it claims the reason is.
+        false
+    } catch (ignored: IllegalStateException) {
         false
     }
 }

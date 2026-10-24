@@ -51,39 +51,9 @@ public class QuotaWatchdog(
         val initialMeasured = probe.measuredMiB()
         val initialPressure = PressureLevel.forMeasurement(initialMeasured, budget.limitMiB)
 
-        var measured = initialMeasured
-        var pressure = initialPressure
-        var evicted = 0
-        val escalations = mutableListOf<Escalation>()
-
+        val pass = EvictionPass(initialMeasured, initialPressure)
         if (initialPressure != PressureLevel.NOMINAL) {
-            for (category in RamCategory.EVICTION_LADDER) {
-                val evictable = synchronized(lock) { evictables[category] } ?: continue
-
-                val target = targetFor(pressure, measured, budget.limitMiB)
-                if (target <= 0) break
-
-                val freed = evictable.evict(target)
-                evicted += freed
-
-                if (category == RamCategory.BRAIN_MODEL && freed > 0) {
-                    val unloaded = Escalation.UnloadLocalModel(
-                        "the local model was unloaded to stay inside the ${budget.limitMiB} MiB cap",
-                    )
-                    val routed = Escalation.RouteToCloud(
-                        "the local model is gone, so inference moves to the cloud",
-                    )
-                    escalations += unloaded
-                    escalations += routed
-                    onEscalation(unloaded)
-                    onEscalation(routed)
-                }
-
-                measured = probe.measuredMiB()
-                pressure = PressureLevel.forMeasurement(measured, budget.limitMiB)
-
-                if (pressure == PressureLevel.NOMINAL) break
-            }
+            walkEvictionLadder(pass)
         }
 
         // The cap is a hard boundary. Reaching it stops the run, even if the
@@ -102,13 +72,80 @@ public class QuotaWatchdog(
             measuredMiB = initialMeasured,
             limitMiB = budget.limitMiB,
             pressure = initialPressure,
-            evictedMiB = evicted,
-            escalations = escalations,
+            evictedMiB = pass.evictedMiB,
+            escalations = pass.escalations,
             hardStop = hardStop,
         )
         synchronized(lock) { lastTick = tick }
         return tick
     }
+
+    /**
+     * Walks the eviction ladder as far as the pressure still requires.
+     *
+     * A category that has no registered component is stepped over, because it
+     * holds nothing the watchdog was told it can take back.
+     */
+    private fun walkEvictionLadder(pass: EvictionPass) {
+        val ladder = RamCategory.EVICTION_LADDER
+        var rung = 0
+        var keepWalking = true
+        while (keepWalking && rung < ladder.size) {
+            keepWalking = evictFrom(ladder[rung], pass)
+            rung++
+        }
+    }
+
+    /**
+     * Runs one rung of the ladder, and says whether the walk continues.
+     *
+     * The walk ends on either boundary: nothing left to reclaim, or the
+     * measurement back inside the cap.
+     */
+    private fun evictFrom(category: RamCategory, pass: EvictionPass): Boolean {
+        val evictable = synchronized(lock) { evictables[category] } ?: return true
+        val target = targetFor(pass.pressure, pass.measuredMiB, budget.limitMiB)
+        if (target <= 0) return false
+
+        val freed = evictable.evict(target)
+        pass.evictedMiB += freed
+        if (category == RamCategory.BRAIN_MODEL && freed > 0) {
+            unloadModelAndRouteToCloud(pass)
+        }
+
+        pass.measuredMiB = probe.measuredMiB()
+        pass.pressure = PressureLevel.forMeasurement(pass.measuredMiB, budget.limitMiB)
+        return pass.pressure != PressureLevel.NOMINAL
+    }
+
+    /**
+     * Recording the model eviction as an escalation is not optional: unloading
+     * the local model changes the run's behaviour, so the route changes with
+     * it and both are announced to the listener.
+     */
+    private fun unloadModelAndRouteToCloud(pass: EvictionPass) {
+        val unloaded = Escalation.UnloadLocalModel(
+            "the local model was unloaded to stay inside the ${budget.limitMiB} MiB cap",
+        )
+        val routed = Escalation.RouteToCloud(
+            "the local model is gone, so inference moves to the cloud",
+        )
+        pass.escalations += unloaded
+        pass.escalations += routed
+        onEscalation(unloaded)
+        onEscalation(routed)
+    }
+
+    /**
+     * The running state of one tick's eviction pass: the measurement the next
+     * rung is sized against, and what the walk has given back so far.
+     */
+    private class EvictionPass(
+        var measuredMiB: Int,
+        var pressure: PressureLevel,
+        var evictedMiB: Int = 0,
+        val escalations: MutableList<Escalation> = mutableListOf(),
+    )
 
     /**
      * How much memory this tick should try to release.
@@ -129,6 +166,14 @@ public class QuotaWatchdog(
         }
         val target = (limit * ceiling).toInt() - measured
         if (target > 0) return target
-        return (limit / 10).coerceAtLeast(1)
+        return (limit / FALLBACK_SLICE_OF_CAP).coerceAtLeast(1)
+    }
+
+    private companion object {
+        /**
+         * The cap is divided into this many slices, and one whole slice is
+         * released when there is no reachable target left to aim at.
+         */
+        const val FALLBACK_SLICE_OF_CAP: Int = 10
     }
 }

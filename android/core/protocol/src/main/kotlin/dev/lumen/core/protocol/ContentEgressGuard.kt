@@ -21,9 +21,7 @@ public enum class EgressContent {
 }
 
 /** A refusal to send content. */
-public class EgressDenied(
-    public val content: EgressContent,
-) : Exception("the content '$content' may not leave the device")
+public class EgressDenied(public val content: EgressContent) : Exception("the content '$content' may not leave the device")
 
 /**
  * The guard on what leaves the device.

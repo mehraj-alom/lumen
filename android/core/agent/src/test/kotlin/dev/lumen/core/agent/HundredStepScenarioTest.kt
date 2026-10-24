@@ -32,7 +32,7 @@ import org.junit.Test
 class HundredStepScenarioTest {
 
     private val goal = Goal(
-        id = RunId("01JBX0000000000000000000001"),
+        id = RunId("01JBX000000000000000000001"),
         text = "find the cheapest flight to Lisbon and send the itinerary",
     )
 
@@ -48,15 +48,14 @@ class HundredStepScenarioTest {
         else -> "Continue"
     }
 
-    private fun screens(): List<dev.lumen.core.model.Observation> =
-        (1..100).map { step ->
-            when (step) {
-                paymentStep -> ScriptedEnvironment.paymentScreen()
-                publishStep -> ScriptedEnvironment.publishScreen()
-                messageStep -> ScriptedEnvironment.messageScreen()
-                else -> ScriptedEnvironment.screen()
-            }
+    private fun screens(): List<dev.lumen.core.model.Observation> = (1..100).map { step ->
+        when (step) {
+            paymentStep -> ScriptedEnvironment.paymentScreen()
+            publishStep -> ScriptedEnvironment.publishScreen()
+            messageStep -> ScriptedEnvironment.messageScreen()
+            else -> ScriptedEnvironment.screen()
         }
+    }
 
     private fun plan(): BrainReply = BrainReply(
         thought = "the plan for the journey",
@@ -208,7 +207,7 @@ class HundredStepScenarioTest {
 
         approver.cancel()
         store.steps.values.forEach { step ->
-            assertThat(step.reason.text).isNotBlank()
+            assertThat(step.reason.text.trim()).isNotEmpty()
         }
         assertThat(store.steps).hasSize(100)
     }

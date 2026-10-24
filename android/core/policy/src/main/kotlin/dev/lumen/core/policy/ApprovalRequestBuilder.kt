@@ -68,33 +68,36 @@ public object ApprovalRequestBuilder {
     /** The headline of the request. */
     public fun titleFor(action: Action, riskClass: RiskClass, label: String?): String {
         val target = label?.takeIf { it.isNotBlank() } ?: actionTarget(action)
-        return when (riskClass) {
-            RiskClass.PAYMENT -> "Pay${target?.let { " $it" } ?: ""}"
-            RiskClass.PUBLISH -> "Send or publish${target?.let { " $it" } ?: ""}"
-            RiskClass.DELETE -> "Delete${target?.let { " $it" } ?: ""}"
-            RiskClass.CREDENTIAL -> "Type a secret"
-            RiskClass.PERMISSION -> "Grant a permission"
-            RiskClass.COMMUNICATION -> "Reach a person"
-            RiskClass.ACCOUNT -> "Change the account"
-            RiskClass.LEGAL -> "Accept a term"
-            RiskClass.IRREVERSIBLE -> "An irreversible action"
-            RiskClass.USER_PINNED -> "You asked to be asked about this"
-            RiskClass.NONE -> "Continue"
-        }
+        val base = STATIC_TITLES.getValue(riskClass)
+        return if (riskClass in TARGETED_TITLES && target != null) "$base $target" else base
     }
 
     /** The concrete content of the request. */
-    public fun detailFor(action: Action, label: String?): String = when (action) {
+    public fun detailFor(action: Action, label: String?): String =
+        typedDetail(action, label) ?: navigationDetail(action) ?: gestureDetail(action)
+
+    /** Actions that put content onto the screen, or hit a coordinate. */
+    private fun typedDetail(action: Action, label: String?): String? = when (action) {
         is Action.InputText -> "The agent will type: \"${redact(action.text)}\""
         is Action.PasteText -> "The agent will paste: \"${redact(action.text)}\""
+        is Action.Tap -> tappedDetail("The agent will tap", label, "The agent will tap the screen")
+        is Action.DoubleTap -> tappedDetail("The agent will double tap", label, "The agent will double tap")
+        is Action.LongPress -> tappedDetail("The agent will long press", label, "The agent will long press")
+        else -> null
+    }
+
+    /** Actions that move between places or pick a named target. */
+    private fun navigationDetail(action: Action): String? = when (action) {
         is Action.OpenUrl -> "The agent will open ${action.url}"
         is Action.OpenApp -> "The agent will open ${action.packageName}"
         is Action.ClickText -> "The agent will tap \"${redact(action.text)}\""
         is Action.ClickById -> "The agent will tap the element ${action.viewId}"
-        is Action.Tap -> label?.let { "The agent will tap \"$it\"" } ?: "The agent will tap the screen"
-        is Action.DoubleTap -> label?.let { "The agent will double tap \"$it\"" } ?: "The agent will double tap"
-        is Action.LongPress -> label?.let { "The agent will long press \"$it\"" } ?: "The agent will long press"
         is Action.Swipe -> "The agent will swipe across the screen"
+        else -> null
+    }
+
+    /** The remaining primitive gestures and read-only actions. */
+    private fun gestureDetail(action: Action): String = when (action) {
         is Action.Scroll -> "The agent will scroll ${action.direction.name.lowercase()}"
         is Action.Drag -> "The agent will drag across the screen"
         is Action.PressEnter -> "The agent will press enter"
@@ -102,22 +105,14 @@ public object ApprovalRequestBuilder {
         is Action.ObserveScreen -> "The agent will read the screen"
         is Action.Screenshot -> "The agent will take a screenshot"
         is Action.ReadFile -> "The agent will read ${action.path}"
+        else -> "The agent will perform an action"
     }
 
+    /** "verb \"label\"" when the target has a label, otherwise the fallback. */
+    private fun tappedDetail(verb: String, label: String?, fallback: String): String = label?.let { "$verb \"$it\"" } ?: fallback
+
     /** What cannot be undone. */
-    public fun consequencesFor(riskClass: RiskClass): List<String> = when (riskClass) {
-        RiskClass.PAYMENT -> listOf("The money leaves the account", "This cannot be undone")
-        RiskClass.PUBLISH -> listOf("Other people will see this", "This cannot be undone")
-        RiskClass.DELETE -> listOf("The data is destroyed", "This cannot be undone")
-        RiskClass.CREDENTIAL -> listOf("The secret is typed into the app")
-        RiskClass.PERMISSION -> listOf("The app keeps the permission until you revoke it")
-        RiskClass.COMMUNICATION -> listOf("The person is contacted now")
-        RiskClass.ACCOUNT -> listOf("The account changes now")
-        RiskClass.LEGAL -> listOf("A term is accepted on your behalf")
-        RiskClass.IRREVERSIBLE -> listOf("This cannot be undone")
-        RiskClass.USER_PINNED -> listOf("You asked to approve this yourself")
-        RiskClass.NONE -> emptyList()
-    }
+    public fun consequencesFor(riskClass: RiskClass): List<String> = CONSEQUENCES[riskClass].orEmpty()
 
     /**
      * A redacted projection of the action.
@@ -126,25 +121,31 @@ public object ApprovalRequestBuilder {
      * truthful about the action and must not dump the content. Long text is
      * shortened; a secret is not shown at all.
      */
-    public fun previewFor(action: Action, label: String?): ActionPreview = when (action) {
-        is Action.InputText -> ActionPreview(
-            kind = "TYPE",
-            text = redact(action.text),
-            target = label,
-        )
-        is Action.PasteText -> ActionPreview(
-            kind = "PASTE",
-            text = redact(action.text),
-            target = label,
-        )
+    public fun previewFor(action: Action, label: String?): ActionPreview =
+        typedPreview(action, label) ?: navigationPreview(action) ?: gesturePreview(action)
+
+    /** Actions that put content onto the screen, or hit a coordinate. */
+    private fun typedPreview(action: Action, label: String?): ActionPreview? = when (action) {
+        is Action.InputText -> ActionPreview(kind = "TYPE", text = redact(action.text), target = label)
+        is Action.PasteText -> ActionPreview(kind = "PASTE", text = redact(action.text), target = label)
+        is Action.Tap -> ActionPreview(kind = "TAP", label = label)
+        is Action.DoubleTap -> ActionPreview(kind = "DOUBLE_TAP", label = label)
+        is Action.LongPress -> ActionPreview(kind = "LONG_PRESS", label = label)
+        else -> null
+    }
+
+    /** Actions that move between places or pick a named target. */
+    private fun navigationPreview(action: Action): ActionPreview? = when (action) {
         is Action.OpenUrl -> ActionPreview(kind = "OPEN_URL", target = action.url)
         is Action.OpenApp -> ActionPreview(kind = "OPEN_APP", target = action.packageName)
         is Action.ClickText -> ActionPreview(kind = "CLICK", label = redact(action.text))
         is Action.ClickById -> ActionPreview(kind = "CLICK", label = action.viewId)
-        is Action.Tap -> ActionPreview(kind = "TAP", label = label)
-        is Action.DoubleTap -> ActionPreview(kind = "DOUBLE_TAP", label = label)
-        is Action.LongPress -> ActionPreview(kind = "LONG_PRESS", label = label)
         is Action.Swipe -> ActionPreview(kind = "SWIPE")
+        else -> null
+    }
+
+    /** The remaining primitive gestures and read-only actions. */
+    private fun gesturePreview(action: Action): ActionPreview = when (action) {
         is Action.Scroll -> ActionPreview(kind = "SCROLL", label = action.direction.name.lowercase())
         is Action.Drag -> ActionPreview(kind = "DRAG")
         is Action.PressEnter -> ActionPreview(kind = "PRESS_ENTER")
@@ -152,6 +153,7 @@ public object ApprovalRequestBuilder {
         is Action.ObserveScreen -> ActionPreview(kind = "OBSERVE")
         is Action.Screenshot -> ActionPreview(kind = "SCREENSHOT")
         is Action.ReadFile -> ActionPreview(kind = "READ_FILE", target = action.path)
+        else -> ActionPreview(kind = "UNKNOWN")
     }
 
     /**
@@ -182,4 +184,42 @@ public object ApprovalRequestBuilder {
 
     /** A placeholder identifier, replaced by the broker when it stages. */
     public const val PLACEHOLDER_ID: String = "00000000000000000000000000"
+
+    /**
+     * The headline for each risk class, before any target is appended.
+     *
+     * A table rather than a `when` so adding a class is a data change, not a
+     * new branch. Every `RiskClass` must have an entry: `getValue` on a
+     * missing one fails loudly instead of inventing a weaker headline.
+     */
+    private val STATIC_TITLES: Map<RiskClass, String> = mapOf(
+        RiskClass.PAYMENT to "Pay",
+        RiskClass.PUBLISH to "Send or publish",
+        RiskClass.DELETE to "Delete",
+        RiskClass.CREDENTIAL to "Type a secret",
+        RiskClass.PERMISSION to "Grant a permission",
+        RiskClass.COMMUNICATION to "Reach a person",
+        RiskClass.ACCOUNT to "Change the account",
+        RiskClass.LEGAL to "Accept a term",
+        RiskClass.IRREVERSIBLE to "An irreversible action",
+        RiskClass.USER_PINNED to "You asked to be asked about this",
+        RiskClass.NONE to "Continue",
+    )
+
+    /** The classes whose headline names the target: pay, publish, delete. */
+    private val TARGETED_TITLES: Set<RiskClass> = setOf(RiskClass.PAYMENT, RiskClass.PUBLISH, RiskClass.DELETE)
+
+    /** The things that cannot be undone, per risk class. `NONE` carries none. */
+    private val CONSEQUENCES: Map<RiskClass, List<String>> = mapOf(
+        RiskClass.PAYMENT to listOf("The money leaves the account", "This cannot be undone"),
+        RiskClass.PUBLISH to listOf("Other people will see this", "This cannot be undone"),
+        RiskClass.DELETE to listOf("The data is destroyed", "This cannot be undone"),
+        RiskClass.CREDENTIAL to listOf("The secret is typed into the app"),
+        RiskClass.PERMISSION to listOf("The app keeps the permission until you revoke it"),
+        RiskClass.COMMUNICATION to listOf("The person is contacted now"),
+        RiskClass.ACCOUNT to listOf("The account changes now"),
+        RiskClass.LEGAL to listOf("A term is accepted on your behalf"),
+        RiskClass.IRREVERSIBLE to listOf("This cannot be undone"),
+        RiskClass.USER_PINNED to listOf("You asked to approve this yourself"),
+    )
 }

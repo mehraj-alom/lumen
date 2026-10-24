@@ -3,9 +3,7 @@ package dev.lumen.core.grounding
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.ErrorCode
-import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.NodeRef
-import dev.lumen.core.grounding.fixtures.SyntheticTreeBuilder
 import dev.lumen.core.model.Observation
 import kotlinx.coroutines.test.runTest
 import org.junit.Test

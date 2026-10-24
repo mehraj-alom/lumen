@@ -26,8 +26,9 @@ public data class Plan(
 
     /** The steps that are ready to run, in plan order. */
     public fun readySteps(): List<Step> = steps.filter { step ->
-        step.state == StepState.PLANNED && step.dependsOn.all { dependency ->
-            this.step(dependency)?.state == StepState.COMPLETE
-        }
+        step.state == StepState.PLANNED &&
+            step.dependsOn.all { dependency ->
+                this.step(dependency)?.state == StepState.COMPLETE
+            }
     }
 }

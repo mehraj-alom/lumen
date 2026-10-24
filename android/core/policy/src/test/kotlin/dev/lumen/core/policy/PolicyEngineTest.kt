@@ -3,26 +3,26 @@ package dev.lumen.core.policy
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.ActionPreview
-import dev.lumen.core.model.fixtures.InMemoryStateStore
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalRequest
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.ManualClock
 import dev.lumen.core.model.NodeRef
 import dev.lumen.core.model.Observation
-import dev.lumen.core.model.RelativeRect
 import dev.lumen.core.model.RelativePoint
+import dev.lumen.core.model.RelativeRect
 import dev.lumen.core.model.RiskClass
 import dev.lumen.core.model.RunId
 import dev.lumen.core.model.StepId
+import dev.lumen.core.model.fixtures.InMemoryStateStore
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
 
 class PolicyEngineTest {
 
-    private val runId = RunId("01JBX0000000000000000000001")
-    private val stepId = StepId("01JBX0000000000000000000002")
+    private val runId = RunId("01JBX000000000000000000001")
+    private val stepId = StepId("01JBX000000000000000000002")
 
     private fun observationWith(
         text: String? = null,
@@ -47,11 +47,7 @@ class PolicyEngineTest {
         ),
     )
 
-    private fun request(
-        action: Action,
-        observation: Observation?,
-        plannerRiskClass: RiskClass = RiskClass.NONE,
-    ) = PolicyRequest(
+    private fun request(action: Action, observation: Observation?, plannerRiskClass: RiskClass = RiskClass.NONE) = PolicyRequest(
         runId = runId,
         stepId = stepId,
         action = action,
@@ -189,7 +185,7 @@ class PolicyEngineTest {
         val grants = GrantStore()
         grants.grant(runId, RiskClass.PUBLISH, expiresAtMs = 10_000L)
         val engine = PolicyEngine(grants = grants)
-        val otherRun = RunId("01JBX0000000000000000000009")
+        val otherRun = RunId("01JBX000000000000000000009")
 
         val decision = engine.decide(
             request(Action.ClickText("Post"), observationWith(text = "Post")).copy(runId = otherRun),
@@ -284,8 +280,8 @@ class PolicyEngineTest {
 
 class ApprovalBrokerTest {
 
-    private val runId = RunId("01JBX0000000000000000000001")
-    private val stepId = StepId("01JBX0000000000000000000002")
+    private val runId = RunId("01JBX000000000000000000001")
+    private val stepId = StepId("01JBX000000000000000000002")
     private lateinit var store: InMemoryStateStore
     private lateinit var clock: ManualClock
     private lateinit var broker: ApprovalBroker

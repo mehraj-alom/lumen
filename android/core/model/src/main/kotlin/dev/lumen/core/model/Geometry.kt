@@ -22,12 +22,7 @@ public value class RelativePoint(public val fraction: Double) {
  * A rectangle in the `0.0..1.0` coordinate space of the root window.
  */
 @Serializable
-public data class RelativeRect(
-    val left: Double,
-    val top: Double,
-    val right: Double,
-    val bottom: Double,
-) {
+public data class RelativeRect(val left: Double, val top: Double, val right: Double, val bottom: Double) {
     init {
         require(left in 0.0..1.0 && right in 0.0..1.0) { "a relative rect must be within 0.0..1.0" }
         require(top in 0.0..1.0 && bottom in 0.0..1.0) { "a relative rect must be within 0.0..1.0" }

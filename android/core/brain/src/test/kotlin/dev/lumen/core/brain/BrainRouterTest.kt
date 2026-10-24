@@ -11,7 +11,7 @@ import org.junit.Test
 
 class BrainRouterTest {
 
-    private val goal = Goal(id = RunId("01JBX0000000000000000000001"), text = "do the thing")
+    private val goal = Goal(id = RunId("01JBX000000000000000000001"), text = "do the thing")
 
     private fun request() = PlanRequest(goal = goal)
 
@@ -126,7 +126,7 @@ class BrainRouterTest {
             ReplanRequest(
                 goal = goal,
                 failedStep = dev.lumen.core.model.Step(
-                    id = dev.lumen.core.model.StepId("01JBX0000000000000000000002"),
+                    id = dev.lumen.core.model.StepId("01JBX000000000000000000002"),
                     planVersion = 1,
                     phase = "research",
                     intent = "open the results",
@@ -141,7 +141,7 @@ class BrainRouterTest {
             CritiqueRequest(
                 goal = goal,
                 step = dev.lumen.core.model.Step(
-                    id = dev.lumen.core.model.StepId("01JBX0000000000000000000002"),
+                    id = dev.lumen.core.model.StepId("01JBX000000000000000000002"),
                     planVersion = 1,
                     phase = "research",
                     intent = "open the results",

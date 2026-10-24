@@ -56,10 +56,7 @@ public abstract class LumenDatabase : RoomDatabase() {
          * The passphrase is fetched from [keyProvider], which holds it wrapped
          * by a Keystore key.
          */
-        public fun open(
-            context: Context,
-            keyProvider: DatabaseKeyProvider,
-        ): LumenDatabase {
+        public fun open(context: Context, keyProvider: DatabaseKeyProvider): LumenDatabase {
             val passphrase = keyProvider.passphrase()
             // The passphrase is cleared once the database is opened.
             val factory = SupportOpenHelperFactory(passphrase, null, true)
@@ -97,7 +94,7 @@ public class DatabaseKeyProvider(private val context: Context) {
     }
 
     /** Removes the stored passphrase. The database becomes unreadable. */
-    public fun forget(): Unit {
+    public fun forget() {
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_WRAPPED)
@@ -140,7 +137,7 @@ public class DatabaseKeyProvider(private val context: Context) {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
+                .setKeySize(KEY_SIZE_BITS)
                 .build(),
         )
         return generator.generateKey()
@@ -151,6 +148,7 @@ public class DatabaseKeyProvider(private val context: Context) {
         private const val KEY_WRAPPED = "wrapped_passphrase"
         private const val KEY_ALIAS = "lumen.database.passphrase"
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
+        private const val KEY_SIZE_BITS = 256
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val PASSPHRASE_BYTES = 32
         private const val IV_BYTES = 12
@@ -159,5 +157,4 @@ public class DatabaseKeyProvider(private val context: Context) {
 }
 
 /** The SQLCipher open helper factory, exposed for tests. */
-public fun sqlCipherFactory(passphrase: ByteArray): SupportSQLiteOpenHelper.Factory =
-    SupportOpenHelperFactory(passphrase, null, true)
+public fun sqlCipherFactory(passphrase: ByteArray): SupportSQLiteOpenHelper.Factory = SupportOpenHelperFactory(passphrase, null, true)

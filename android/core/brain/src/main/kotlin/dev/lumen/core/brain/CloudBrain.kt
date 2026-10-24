@@ -1,6 +1,7 @@
 package dev.lumen.core.brain
 
-import dev.lumen.core.model.Goal
+import dev.lumen.core.model.ApiError
+import dev.lumen.core.model.ErrorCode
 import dev.lumen.core.model.Observation
 import dev.lumen.core.model.RiskClass
 import dev.lumen.core.model.Verdict
@@ -11,13 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
 
 /** An HTTP response, reduced to what the brain needs. */
 public data class HttpResponse(val code: Int, val body: String)
@@ -49,10 +50,7 @@ public data class PlannedStepReply(
 
 /** The tool call inside a step. */
 @Serializable
-public data class ActionReply(
-    val tool: String = "",
-    val args: JsonObject = JsonObject(emptyMap()),
-)
+public data class ActionReply(val tool: String = "", val args: JsonObject = JsonObject(emptyMap()))
 
 /** The critique envelope the brain replies with. */
 @Serializable
@@ -62,10 +60,13 @@ public data class CritiqueReply(
     @SerialName("observation_summary") val observationSummary: String? = null,
 )
 
-/** A malformed reply from the brain. */
-public class MalformedBrainReply(
-    message: String,
-) : Exception(message)
+/**
+ * A malformed reply from the brain.
+ *
+ * The parse failure that proved it malformed is kept as the cause, so the
+ * audit trail says why the reply was rejected (invariant I9).
+ */
+public class MalformedBrainReply(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /**
  * The cloud brain.
@@ -89,7 +90,10 @@ public class CloudBrain(
     private val maxTokens: Int = DEFAULT_MAX_TOKENS,
 ) : BrainPort {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     override val route: BrainRoute get() = BrainRoute.CLOUD
 
@@ -152,44 +156,68 @@ public class CloudBrain(
                 )
             }
 
-            when {
-                response.code == 401 || response.code == 403 ->
-                    throw MalformedBrainReply("the brain refused the credentials: ${response.code}")
-
-                response.code == 429 || response.code >= 500 ->
-                    throw MalformedBrainReply("the brain is unavailable: ${response.code}")
-
-                response.code !in 200..299 ->
-                    throw MalformedBrainReply("the brain replied with ${response.code}")
-
-                else -> extractContent(response.body)
-            }
+            refusalFor(response.code)?.let { throw it }
+            extractContent(response.body)
         }
+    }
+
+    /**
+     * The failure a status code carries, or null when the reply may be read.
+     *
+     * A refused credential is terminal, so it is not retryable; a rate limit
+     * or a server fault is transient and the retry policy feeds on it. The
+     * status code stays in every message so the audit can tell the two apart.
+     */
+    private fun refusalFor(code: Int): Exception? = when {
+        code == HTTP_UNAUTHORIZED || code == HTTP_FORBIDDEN ->
+            MalformedBrainReply("the brain refused the credentials: $code")
+
+        code == HTTP_TOO_MANY_REQUESTS || code >= HTTP_SERVER_ERROR ->
+            BrainUnavailable(
+                ApiError(
+                    code = ErrorCode.BRAIN_UNAVAILABLE,
+                    message = "the brain is unavailable: $code",
+                ),
+            )
+
+        code !in HTTP_OK_MIN..HTTP_OK_MAX ->
+            MalformedBrainReply("the brain replied with $code")
+
+        else -> null
     }
 
     /** The assistant's text from a chat completion. */
     private fun extractContent(body: String): String {
-        val parsed = try {
-            json.parseToJsonElement(body).jsonObject
-        } catch (error: Exception) {
-            throw MalformedBrainReply("the brain reply was not json")
-        }
-
-        val choices = parsed["choices"] as? JsonArray
-            ?: throw MalformedBrainReply("the brain reply had no choices")
-        val message = (choices.firstOrNull() as? JsonObject)?.get("message") as? JsonObject
-            ?: throw MalformedBrainReply("the brain reply had no message")
-        val content = (message["content"] as? JsonPrimitive)?.content
-            ?: throw MalformedBrainReply("the brain reply had no content")
-        return content
+        val parsed = parseReplyJson(body)
+        val choices = (parsed["choices"] as? JsonArray).orMalformed("the brain reply had no choices")
+        val message = ((choices.firstOrNull() as? JsonObject)?.get("message") as? JsonObject)
+            .orMalformed("the brain reply had no message")
+        return (message["content"] as? JsonPrimitive).orMalformed("the brain reply had no content").content
     }
+
+    /**
+     * The reply body as a json object.
+     *
+     * A body that is not a json object at all is the same malformed reply as
+     * one that does not parse; the parse failure rides along as the cause.
+     */
+    private fun parseReplyJson(body: String): JsonObject {
+        val element = try {
+            json.parseToJsonElement(body)
+        } catch (error: SerializationException) {
+            throw MalformedBrainReply("the brain reply was not json", error)
+        }
+        return element as? JsonObject ?: throw MalformedBrainReply("the brain reply was not json")
+    }
+
+    private inline fun <T> T?.orMalformed(message: String): T = this ?: throw MalformedBrainReply(message)
 
     /** Turns a plan reply into steps, or fails. */
     internal fun parsePlan(reply: String): BrainReply {
         val envelope = try {
             json.decodeFromString(PlanReply.serializer(), reply)
-        } catch (error: Exception) {
-            throw MalformedBrainReply("the brain reply did not match the plan envelope")
+        } catch (error: SerializationException) {
+            throw MalformedBrainReply("the brain reply did not match the plan envelope", error)
         }
 
         val steps = envelope.steps.map { step ->
@@ -218,8 +246,8 @@ public class CloudBrain(
     internal fun parseCritique(reply: String): Critique {
         val envelope = try {
             json.decodeFromString(CritiqueReply.serializer(), reply)
-        } catch (error: Exception) {
-            throw MalformedBrainReply("the brain reply did not match the critique envelope")
+        } catch (error: SerializationException) {
+            throw MalformedBrainReply("the brain reply did not match the critique envelope", error)
         }
         val verdict = Verdict.entries.firstOrNull { it.name.equals(envelope.verdict, ignoreCase = true) }
             ?: throw MalformedBrainReply("the critique carried the unknown verdict '${envelope.verdict}'")
@@ -258,9 +286,11 @@ public class CloudBrain(
         appendLine("Goal: ${request.goal.text}")
         appendLine("Device: ${request.deviceState}")
         appendLine("Remaining steps: ${request.remainingSteps}")
-        append(request.observations.take(MAX_OBSERVATIONS_IN_PROMPT).joinToString("\n") { observation ->
-            "\nScreen in ${observation.app}:\n${summarise(observation)}"
-        })
+        append(
+            request.observations.take(MAX_OBSERVATIONS_IN_PROMPT).joinToString("\n") { observation ->
+                "\nScreen in ${observation.app}:\n${summarise(observation)}"
+            },
+        )
     }
 
     private fun replanPrompt(request: ReplanRequest): String = buildString {
@@ -300,5 +330,14 @@ public class CloudBrain(
 
         private const val MAX_OBSERVATIONS_IN_PROMPT = 3
         private const val MAX_NODES_IN_PROMPT = 120
+
+        // The status vocabulary of the chat endpoint. The values are protocol
+        // facts, not tuning knobs: 401/403 end the run, 429/5xx are transient.
+        private const val HTTP_UNAUTHORIZED = 401
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_SERVER_ERROR = 500
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
     }
 }

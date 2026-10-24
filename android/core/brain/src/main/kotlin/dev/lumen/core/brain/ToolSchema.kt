@@ -19,12 +19,7 @@ import kotlinx.serialization.json.longOrNull
  * only emit these tools, and the agent validates every call against them
  * before anything is dispatched.
  */
-public data class ToolDefinition(
-    val name: String,
-    val description: String,
-    val required: List<String>,
-    val optional: List<String>,
-) {
+public data class ToolDefinition(val name: String, val description: String, val required: List<String>, val optional: List<String>) {
     /** The property names this tool accepts. */
     public val properties: Set<String> get() = (required + optional).toSet()
 }
@@ -41,7 +36,8 @@ public object ToolSchema {
     public val definitions: List<ToolDefinition> = listOf(
         ToolDefinition(
             name = "observe_screen",
-            description = "Read the current screen. Returns the accessibility tree, the foreground app, and optionally a screenshot. Call this before deciding what to interact with.",
+            description = "Read the current screen: the accessibility tree, the foreground app, " +
+                "and optionally a screenshot. Call this before deciding what to interact with.",
             required = emptyList(),
             optional = listOf("include_screenshot", "include_overlays", "max_nodes"),
         ),
@@ -193,8 +189,17 @@ public object ToolSchema {
  */
 public object ActionCodec {
 
-    /** The tool call that performs [action]. */
-    public fun encode(action: Action): Pair<String, JsonObject> = when (action) {
+    /**
+     * The tool call that performs [action].
+     *
+     * The codec is split in two groups so each stays readable; together they
+     * cover every action, and a new action that matches neither is a codec
+     * bug rather than a silent fallback.
+     */
+    public fun encode(action: Action): Pair<String, JsonObject> = encodeGesture(action) ?: encodeCommand(action)
+
+    /** The tool for a movement or capture action, or null if it is a command. */
+    private fun encodeGesture(action: Action): Pair<String, JsonObject>? = when (action) {
         is Action.Tap -> "tap" to json(
             "x" to action.x.fraction,
             "y" to action.y.fraction,
@@ -223,17 +228,6 @@ public object ActionCodec {
             "path" to JsonArray(action.path.map { JsonPrimitive(it.fraction) }),
             "duration_ms" to action.durationMs,
         )
-        is Action.InputText -> "input_text" to json("text" to action.text)
-        is Action.PasteText -> "paste_text" to json("text" to action.text)
-        Action.PressEnter -> "press_enter" to JsonObject(emptyMap())
-        is Action.ClickById -> "click_by_id" to json("view_id" to action.viewId)
-        is Action.ClickText -> "click_text" to json(
-            "text" to action.text,
-            "occurrence" to action.occurrence,
-        )
-        is Action.OpenApp -> "open_app" to json("package" to action.packageName)
-        is Action.OpenUrl -> "open_url" to json("url" to action.url)
-        Action.ListApps -> "list_apps" to JsonObject(emptyMap())
         is Action.ObserveScreen -> "observe_screen" to json(
             "include_screenshot" to action.includeScreenshot,
             "include_overlays" to action.includeOverlays,
@@ -249,72 +243,127 @@ public object ActionCodec {
                 ),
             ),
         )
+        else -> null
+    }
+
+    /** The tool for a text, click or app command. */
+    private fun encodeCommand(action: Action): Pair<String, JsonObject> = when (action) {
+        is Action.InputText -> "input_text" to json("text" to action.text)
+        is Action.PasteText -> "paste_text" to json("text" to action.text)
+        Action.PressEnter -> "press_enter" to JsonObject(emptyMap())
+        is Action.ClickById -> "click_by_id" to json("view_id" to action.viewId)
+        is Action.ClickText -> "click_text" to json(
+            "text" to action.text,
+            "occurrence" to action.occurrence,
+        )
+        is Action.OpenApp -> "open_app" to json("package" to action.packageName)
+        is Action.OpenUrl -> "open_url" to json("url" to action.url)
+        Action.ListApps -> "list_apps" to JsonObject(emptyMap())
         is Action.ReadFile -> "read_file" to json("path" to action.path)
+        else -> error("the action ${action::class.simpleName} has no tool in the codec")
     }
 
     /**
      * The action for a tool call.
+     *
+     * The tool names in the two groups are disjoint, so a tool that decodes
+     * in one never reaches the other and an unknown or malformed call ends
+     * as null either way. The order each group matches is observable: a tool
+     * that is present in one group must not be answered by the other.
      *
      * @return null when the tool is unknown or the arguments do not fit, in
      *   which case the reply is malformed and the step fails.
      */
     public fun decode(tool: String, arguments: JsonObject): Action? {
         ToolSchema.validate(tool, arguments)?.let { return null }
+        return decodeGestureTool(tool, arguments) ?: decodeCommandTool(tool, arguments)
+    }
 
-        return when (tool) {
-            "tap" -> point(arguments)?.let { Action.Tap(it.first, it.second) }
-            "double_tap" -> point(arguments)?.let { Action.DoubleTap(it.first, it.second) }
-            "long_press" -> point(arguments)?.let {
-                Action.LongPress(it.first, it.second, arguments.long("duration_ms") ?: 600L)
-            }
-            "swipe" -> {
-                val fromX = arguments.double("from_x") ?: return null
-                val fromY = arguments.double("from_y") ?: return null
-                val toX = arguments.double("to_x") ?: return null
-                val toY = arguments.double("to_y") ?: return null
-                Action.Swipe(
-                    RelativePoint(fromX), RelativePoint(fromY),
-                    RelativePoint(toX), RelativePoint(toY),
-                    arguments.long("duration_ms") ?: 300L,
-                )
-            }
-            "scroll" -> {
-                val direction = arguments.string("direction")?.uppercase() ?: return null
-                val parsed = dev.lumen.core.model.ScrollDirection.entries
-                    .firstOrNull { it.name == direction } ?: return null
-                Action.Scroll(parsed, arguments.double("amount") ?: 0.5)
-            }
-            "drag" -> {
-                val path = (arguments["path"] as? JsonArray)?.mapNotNull {
-                    (it as? JsonPrimitive)?.doubleOrNull
-                } ?: return null
-                if (path.size < 2) return null
-                Action.Drag(
-                    path.map { RelativePoint(it) },
-                    arguments.long("duration_ms") ?: 500L,
-                )
-            }
-            "input_text" -> arguments.string("text")?.takeIf { it.isNotEmpty() }
-                ?.let { Action.InputText(it) }
-            "paste_text" -> arguments.string("text")?.takeIf { it.isNotEmpty() }
-                ?.let { Action.PasteText(it) }
-            "press_enter" -> Action.PressEnter
-            "click_by_id" -> arguments.string("view_id")?.takeIf { it.isNotBlank() }
-                ?.let { Action.ClickById(it) }
-            "click_text" -> arguments.string("text")?.takeIf { it.isNotBlank() }
-                ?.let { Action.ClickText(it, arguments.int("occurrence") ?: 0) }
-            "open_app" -> arguments.string("package")?.takeIf { it.isNotBlank() }
-                ?.let { Action.OpenApp(it) }
-            "open_url" -> arguments.string("url")?.takeIf { it.isNotBlank() }
-                ?.let { Action.OpenUrl(it) }
-            "list_apps" -> Action.ListApps
-            "screenshot" -> Action.Screenshot(
-                arguments.rect("region") ?: RelativeRect.FULL,
-            )
-            "read_file" -> arguments.string("path")?.takeIf { it.isNotBlank() }
-                ?.let { Action.ReadFile(it) }
-            else -> null
-        }
+    private fun decodeGestureTool(tool: String, arguments: JsonObject): Action? = when (tool) {
+        "tap" -> pointTool(arguments) { x, y -> Action.Tap(x, y) }
+        "double_tap" -> pointTool(arguments) { x, y -> Action.DoubleTap(x, y) }
+        "long_press" -> decodeLongPress(arguments)
+        "swipe" -> decodeSwipe(arguments)
+        "scroll" -> decodeScroll(arguments)
+        "drag" -> decodeDrag(arguments)
+        "screenshot" -> decodeScreenshot(arguments)
+        else -> null
+    }
+
+    private fun decodeCommandTool(tool: String, arguments: JsonObject): Action? = when (tool) {
+        "input_text" -> textTool(arguments, "text", requireNonBlank = false) { Action.InputText(it) }
+        "paste_text" -> textTool(arguments, "text", requireNonBlank = false) { Action.PasteText(it) }
+        "press_enter" -> Action.PressEnter
+        "click_by_id" -> textTool(arguments, "view_id", requireNonBlank = true) { Action.ClickById(it) }
+        "click_text" -> decodeClickText(arguments)
+        "open_app" -> textTool(arguments, "package", requireNonBlank = true) { Action.OpenApp(it) }
+        "open_url" -> textTool(arguments, "url", requireNonBlank = true) { Action.OpenUrl(it) }
+        "list_apps" -> Action.ListApps
+        "read_file" -> textTool(arguments, "path", requireNonBlank = true) { Action.ReadFile(it) }
+        else -> null
+    }
+
+    /** An action over the two relative-point arguments, or null if they do not fit. */
+    private fun pointTool(arguments: JsonObject, build: (RelativePoint, RelativePoint) -> Action): Action? {
+        val (x, y) = point(arguments) ?: return null
+        return build(x, y)
+    }
+
+    private fun decodeLongPress(arguments: JsonObject): Action? {
+        val (x, y) = point(arguments) ?: return null
+        return Action.LongPress(x, y, arguments.long("duration_ms") ?: DEFAULT_LONG_PRESS_DURATION_MS)
+    }
+
+    private fun decodeScreenshot(arguments: JsonObject): Action? = Action.Screenshot(arguments.rect("region") ?: RelativeRect.FULL)
+
+    /**
+     * The single-text-argument tool.
+     *
+     * The schema carries two text rules and they are not interchangeable:
+     * typed text may be whitespace but not empty; ids, packages, urls and
+     * paths may be neither. [requireNonBlank] selects the rule per tool.
+     */
+    private fun textTool(arguments: JsonObject, key: String, requireNonBlank: Boolean, build: (String) -> Action): Action? {
+        val text = arguments.string(key) ?: return null
+        val accepted = if (requireNonBlank) text.isNotBlank() else text.isNotEmpty()
+        return text.takeIf { accepted }?.let(build)
+    }
+
+    private fun decodeSwipe(arguments: JsonObject): Action? {
+        val fromX = arguments.double("from_x") ?: return null
+        val fromY = arguments.double("from_y") ?: return null
+        val toX = arguments.double("to_x") ?: return null
+        val toY = arguments.double("to_y") ?: return null
+        return Action.Swipe(
+            RelativePoint(fromX),
+            RelativePoint(fromY),
+            RelativePoint(toX),
+            RelativePoint(toY),
+            arguments.long("duration_ms") ?: DEFAULT_SWIPE_DURATION_MS,
+        )
+    }
+
+    private fun decodeScroll(arguments: JsonObject): Action? {
+        val direction = arguments.string("direction")?.uppercase() ?: return null
+        val parsed = dev.lumen.core.model.ScrollDirection.entries
+            .firstOrNull { it.name == direction } ?: return null
+        return Action.Scroll(parsed, arguments.double("amount") ?: DEFAULT_SCROLL_AMOUNT)
+    }
+
+    private fun decodeDrag(arguments: JsonObject): Action? {
+        val path = (arguments["path"] as? JsonArray)?.mapNotNull {
+            (it as? JsonPrimitive)?.doubleOrNull
+        } ?: return null
+        if (path.size < MIN_PATH_POINTS) return null
+        return Action.Drag(
+            path.map { RelativePoint(it) },
+            arguments.long("duration_ms") ?: DEFAULT_DRAG_DURATION_MS,
+        )
+    }
+
+    private fun decodeClickText(arguments: JsonObject): Action? {
+        val text = arguments.string("text")?.takeIf { it.isNotBlank() } ?: return null
+        return Action.ClickText(text, arguments.int("occurrence") ?: DEFAULT_CLICK_OCCURRENCE)
     }
 
     private fun point(arguments: JsonObject): Pair<RelativePoint, RelativePoint>? {
@@ -341,24 +390,36 @@ public object ActionCodec {
         return JsonObject(map)
     }
 
-    private fun JsonObject.string(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
-    private fun JsonObject.double(key: String): Double? =
-        (this[key] as? JsonPrimitive)?.doubleOrNull
+    private fun JsonObject.double(key: String): Double? = (this[key] as? JsonPrimitive)?.doubleOrNull
 
-    private fun JsonObject.int(key: String): Int? =
-        (this[key] as? JsonPrimitive)?.intOrNull
+    private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
 
-    private fun JsonObject.long(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }
+    private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }
 
     private fun JsonObject.rect(key: String): RelativeRect? {
         val values = (this[key] as? JsonArray)?.mapNotNull {
             (it as? JsonPrimitive)?.doubleOrNull
         } ?: return null
-        if (values.size != 4) return null
+        if (values.size != REGION_EDGE_COUNT) return null
         if (values.any { it !in 0.0..1.0 }) return null
-        return RelativeRect(values[0], values[1], values[2], values[3])
+        // The array is the rectangle's edges in model order: left, top,
+        // right, bottom. The size check above makes first/last exact.
+        return RelativeRect(values.first(), values[1], values[2], values.last())
     }
+
+    // The defaults a tool call gets when the brain omits the argument.
+    // They mirror the defaults on the Action model itself; a drift here
+    // would silently change what an under-specified call means.
+    private const val DEFAULT_LONG_PRESS_DURATION_MS = 600L
+    private const val DEFAULT_SWIPE_DURATION_MS = 300L
+    private const val DEFAULT_DRAG_DURATION_MS = 500L
+    private const val DEFAULT_SCROLL_AMOUNT = 0.5
+    private const val DEFAULT_CLICK_OCCURRENCE = 0
+
+    // A drag needs a start and an end to be a path at all, and a region
+    // is exactly the four relative edges of the rectangle.
+    private const val MIN_PATH_POINTS = 2
+    private const val REGION_EDGE_COUNT = 4
 }

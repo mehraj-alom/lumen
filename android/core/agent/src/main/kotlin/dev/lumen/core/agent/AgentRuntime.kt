@@ -56,63 +56,88 @@ public class AgentRuntime(
      * makes a run survive the process being killed.
      */
     public suspend fun run(goal: Goal): RunOutcome {
-        val startedAt = clock()
-        var stepsExecuted = 0
-        var replans = 0
-
-        var plan = store.loadPlan(goal.id) ?: createPlan(goal)
-        var observation = environment.observe()
+        val state = RunState(
+            goal = goal,
+            startedAt = clock(),
+            plan = store.loadPlan(goal.id) ?: createPlan(goal),
+            observation = environment.observe(),
+        )
 
         while (true) {
-            if (abort.isAborted) return RunOutcome.Aborted(stepsExecuted)
-
-            checkBudget(startedAt, stepsExecuted)?.let { return it }
-
-            val step = nextStep(plan)
-            if (step == null) {
-                val unfinished = plan.steps.count { it.state != StepState.COMPLETE }
-                if (unfinished == 0) {
-                    return RunOutcome.Completed("the goal is satisfied", stepsExecuted)
-                }
-                if (replans >= config.maxReplans) {
-                    return RunOutcome.Failed("the plan is blocked and cannot be revised", stepsExecuted)
-                }
-                replans++
-                plan = revisePlan(goal, plan, failed = null, observation = observation)
-                continue
-            }
-
-            when (val result = executeStep(goal, plan, step, observation)) {
-                is StepResult.Completed -> {
-                    stepsExecuted++
-                    observation = result.observation
-                    plan = result.plan
-                }
-
-                is StepResult.Finished -> {
-                    stepsExecuted++
-                    return RunOutcome.Completed(result.summary, stepsExecuted)
-                }
-
-                is StepResult.NeedsReplan -> {
-                    stepsExecuted++
-                    observation = result.observation
-                    if (replans >= config.maxReplans) {
-                        return RunOutcome.Failed("the step could not be recovered from", stepsExecuted)
-                    }
-                    replans++
-                    plan = revisePlan(goal, plan, failed = step, observation = result.observation)
-                }
-
-                is StepResult.Failed -> {
-                    return RunOutcome.Failed(result.reason, stepsExecuted)
-                }
-
-                StepResult.Aborted -> {
-                    return RunOutcome.Aborted(stepsExecuted)
-                }
-            }
+            val finished = advance(state)
+            if (finished != null) return finished
         }
+    }
+
+    /**
+     * Takes one iteration of the loop, in the fixed order the run has always
+     * applied: the abort is honoured first, then the budget, then the next
+     * step is chosen and executed. A non-null return ends the run; null means
+     * the loop advances with the state this call mutated.
+     */
+    private suspend fun advance(state: RunState): RunOutcome? {
+        if (abort.isAborted) return RunOutcome.Aborted(state.stepsExecuted)
+
+        checkBudget(state.startedAt, state.stepsExecuted)?.let { return it }
+
+        val step = nextStep(state.plan)
+        if (step == null) return idleAdvance(state)
+
+        return when (val result = executeStep(state.goal, state.plan, step, state.observation)) {
+            is StepResult.Completed -> {
+                state.stepsExecuted++
+                state.observation = result.observation
+                state.plan = result.plan
+                null
+            }
+
+            is StepResult.Finished -> {
+                state.stepsExecuted++
+                RunOutcome.Completed(result.summary, state.stepsExecuted)
+            }
+
+            is StepResult.NeedsReplan -> {
+                state.stepsExecuted++
+                state.observation = result.observation
+                if (state.replans >= config.maxReplans) {
+                    RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
+                } else {
+                    state.replans++
+                    state.plan = revisePlan(state.goal, state.plan, failed = step, observation = result.observation)
+                    null
+                }
+            }
+
+            is StepResult.Failed -> RunOutcome.Failed(result.reason, state.stepsExecuted)
+
+            StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
+        }
+    }
+
+    /**
+     * The decision when the plan holds no runnable step: a plan with no steps
+     * says nothing about the goal, a fully complete plan is done, and a
+     * blocked plan is revised until the replan budget runs out.
+     */
+    private suspend fun idleAdvance(state: RunState): RunOutcome? {
+        if (state.plan.steps.isEmpty()) {
+            // A plan with no steps says nothing about the goal, and there is
+            // no failed step to replan from.
+            return RunOutcome.Failed("the brain returned a plan with no steps", state.stepsExecuted)
+        }
+
+        val unfinished = state.plan.steps.count { it.state != StepState.COMPLETE }
+        if (unfinished == 0) {
+            return RunOutcome.Completed("the goal is satisfied", state.stepsExecuted)
+        }
+
+        if (state.replans >= config.maxReplans) {
+            return RunOutcome.Failed("the plan is blocked and cannot be revised", state.stepsExecuted)
+        }
+
+        state.replans++
+        state.plan = revisePlan(state.goal, state.plan, failed = null, observation = state.observation)
+        return null
     }
 
     /** Asks the run to stop. */
@@ -134,12 +159,7 @@ public class AgentRuntime(
         return plan
     }
 
-    private suspend fun revisePlan(
-        goal: Goal,
-        previous: Plan,
-        failed: Step?,
-        observation: Observation?,
-    ): Plan {
+    private suspend fun revisePlan(goal: Goal, previous: Plan, failed: Step?, observation: Observation?): Plan {
         val failedStep = failed
             ?: previous.steps.lastOrNull { it.state != StepState.COMPLETE }
             ?: previous.steps.first()
@@ -160,15 +180,29 @@ public class AgentRuntime(
 
     // -------------------------------------------------------------- execution
 
-    private suspend fun executeStep(
-        goal: Goal,
-        plan: Plan,
-        step: Step,
-        observation: Observation?,
-    ): StepResult {
+    /**
+     * Runs one step. The order is fixed by the invariants: the policy is
+     * consulted before anything is dispatched, an abort is checked both before
+     * the policy and before the action, and the action is only performed once
+     * a required approval has come back granted (I4, I12).
+     */
+    private suspend fun executeStep(goal: Goal, plan: Plan, step: Step, observation: Observation?): StepResult {
         if (abort.isAborted) return StepResult.Aborted
 
-        // The policy runs before the action, never after.
+        val blocked = preDispatchBlocker(goal, step, observation)
+        if (blocked != null) return blocked
+
+        if (abort.isAborted) return StepResult.Aborted
+
+        return dispatchAction(goal, plan, step)
+    }
+
+    /**
+     * The policy answer for [step], and the approval gate if it asked for one.
+     * A denied step, or a step whose approval did not come back granted, is a
+     * failure and nothing is dispatched.
+     */
+    private suspend fun preDispatchBlocker(goal: Goal, step: Step, observation: Observation?): StepResult? {
         val decision = policy.decide(
             PolicyRequest(
                 runId = goal.id,
@@ -191,8 +225,15 @@ public class AgentRuntime(
             }
         }
 
-        if (abort.isAborted) return StepResult.Aborted
+        return null
+    }
 
+    /**
+     * Performs the action, records its observation, and asks the critic. A
+     * failed action is recorded as failed and ends the step; otherwise the
+     * critic's verdict decides how the step resolves.
+     */
+    private suspend fun dispatchAction(goal: Goal, plan: Plan, step: Step): StepResult {
         val result = environment.perform(step.action)
         if (!result.ok) {
             val reason = result.error?.message ?: "the action failed"
@@ -242,11 +283,7 @@ public class AgentRuntime(
      * process being killed. The wait reads the decision from the store,
      * because it may arrive from another process.
      */
-    private suspend fun awaitApproval(
-        goal: Goal,
-        step: Step,
-        request: ApprovalRequest,
-    ): ApprovalOutcome {
+    private suspend fun awaitApproval(goal: Goal, step: Step, request: ApprovalRequest): ApprovalOutcome {
         val approvalId = approvals.stage(request)
         store.saveStep(
             runId = goal.id,
@@ -291,8 +328,7 @@ public class AgentRuntime(
         return null
     }
 
-    private suspend fun deviceState(): DeviceState =
-        DeviceState(foregroundPackage = environment.foregroundPackage())
+    private suspend fun deviceState(): DeviceState = DeviceState(foregroundPackage = environment.foregroundPackage())
 
     /** The outcome of one step. */
     private sealed interface StepResult {
@@ -302,6 +338,17 @@ public class AgentRuntime(
         data class Failed(val reason: String) : StepResult
         data object Aborted : StepResult
     }
+
+    /**
+     * The mutable cursor of a run: the plan and observation in play, and how
+     * many steps and replans have been spent. It is a single holder so the loop
+     * advances by mutating one object rather than threading every counter
+     * through each step of the iteration.
+     */
+    private class RunState(val goal: Goal, val startedAt: Long, var plan: Plan, var observation: Observation?) {
+        var stepsExecuted: Int = 0
+        var replans: Int = 0
+    }
 }
 
 /**
@@ -310,12 +357,7 @@ public class AgentRuntime(
  * The steps are given real identifiers and the reasons the brain gave, so
  * the trace says why each step happened (invariant I9).
  */
-public fun BrainReply.toPlan(
-    runId: RunId,
-    ids: UlidGenerator,
-    nowMs: Long,
-    previousVersion: Int = 0,
-): Plan = Plan(
+public fun BrainReply.toPlan(runId: RunId, ids: UlidGenerator, nowMs: Long, previousVersion: Int = 0): Plan = Plan(
     runId = runId,
     version = previousVersion + 1,
     steps = steps.map { planned ->
@@ -341,11 +383,14 @@ public fun BrainReply.toPlan(
 private fun phaseFor(planned: dev.lumen.core.brain.PlannedStep): String {
     val intent = planned.intent.lowercase()
     return when {
-        intent.contains("pay") || intent.contains("book") -> "book"
-        intent.contains("publish") || intent.contains("note") -> "publish"
-        intent.contains("send") || intent.contains("message") -> "notify"
-        intent.contains("verify") || intent.contains("confirm") -> "verify"
-        intent.contains("compare") || intent.contains("check") -> "compare"
+        intent containsAny arrayOf("pay", "book") -> "book"
+        intent containsAny arrayOf("publish", "note") -> "publish"
+        intent containsAny arrayOf("send", "message") -> "notify"
+        intent containsAny arrayOf("verify", "confirm") -> "verify"
+        intent containsAny arrayOf("compare", "check") -> "compare"
         else -> "research"
     }
 }
+
+/** Whether the intent names any of [terms]. The first matching group wins the ladder above. */
+private infix fun String.containsAny(terms: Array<String>): Boolean = terms.any { contains(it) }

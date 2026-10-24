@@ -50,14 +50,11 @@ public class BrainRouter(
     override val route: BrainRoute
         get() = BrainRoute.CLOUD
 
-    override suspend fun plan(request: PlanRequest): BrainReply =
-        serve { it.plan(request) }
+    override suspend fun plan(request: PlanRequest): BrainReply = serve { it.plan(request) }
 
-    override suspend fun replan(request: ReplanRequest): BrainReply =
-        serve { it.replan(request) }
+    override suspend fun replan(request: ReplanRequest): BrainReply = serve { it.replan(request) }
 
-    override suspend fun critique(request: CritiqueRequest): Critique =
-        serve { it.critique(request) }
+    override suspend fun critique(request: CritiqueRequest): Critique = serve { it.critique(request) }
 
     private suspend fun <T> serve(call: suspend (BrainPort) -> T): T {
         val chosen = choose()
@@ -95,6 +92,4 @@ public class BrainRouter(
 }
 
 /** No brain could serve the request. */
-public class BrainUnavailable(
-    public val error: ApiError,
-) : Exception(error.message)
+public class BrainUnavailable(public val error: ApiError) : Exception(error.message)

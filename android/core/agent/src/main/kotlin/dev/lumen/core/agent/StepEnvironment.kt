@@ -1,7 +1,7 @@
 package dev.lumen.core.agent
 
-import dev.lumen.core.model.Action
 import dev.lumen.core.action.ActionResult
+import dev.lumen.core.model.Action
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.Observation
 import java.util.concurrent.atomic.AtomicBoolean
@@ -48,11 +48,14 @@ public class AbortSignal {
 public data class RunConfig(
     val stepsSoftLimit: Int = 150,
     val stepsHardLimit: Int = 400,
-    val wallClockLimitMs: Long = 45L * 60L * 1000L,
+    val wallClockLimitMs: Long = DEFAULT_WALL_CLOCK_MS,
     val costLimitMicros: Long = 0L,
     val approvalPollIntervalMs: Long = 50L,
     val maxReplans: Int = 25,
 )
+
+/** The default wall-clock ceiling for a run: 45 minutes (`AGENTS.md` §2). */
+private const val DEFAULT_WALL_CLOCK_MS: Long = 45L * 60L * 1000L
 
 /** How a run ended. */
 public sealed interface RunOutcome {

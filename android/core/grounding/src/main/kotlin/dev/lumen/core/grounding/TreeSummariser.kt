@@ -13,9 +13,7 @@ import dev.lumen.core.model.NodeRef
  * The result is deterministic. The same tree always produces the same
  * summary, in the same order, with the same content (invariant I8).
  */
-public class TreeSummariser(
-    private val maxCharacters: Int = DEFAULT_MAX_CHARACTERS,
-) {
+public class TreeSummariser(private val maxCharacters: Int = DEFAULT_MAX_CHARACTERS) {
     init {
         require(maxCharacters > 0) { "the summary budget must be positive" }
     }
@@ -51,8 +49,7 @@ public class TreeSummariser(
      * children instead.
      */
     private fun lineFor(node: NodeRef): String? {
-        val label = node.text?.takeIf { it.isNotBlank() }
-            ?: node.contentDescription?.takeIf { it.isNotBlank() }
+        val label = meaningfulLabel(node)
         val actionable = node.clickable || node.editable || node.scrollable
 
         if (label == null && !actionable) return null
@@ -61,13 +58,25 @@ public class TreeSummariser(
             append("  ".repeat(node.depth.coerceIn(0, MAX_DEPTH)))
             append(node.className.substringAfterLast('.'))
             val viewId = node.viewId
-            if (viewId != null) append('#').append(viewId.substringAfterLast('/'))
+            // The short resource form (`id/search`) is what a planner can name
+            // back; the entry alone loses the type, and the package prefix is
+            // the part every node on the screen shares.
+            if (viewId != null) append('#').append(viewId.substringAfterLast(':'))
             if (label != null) append(" \"").append(label.take(MAX_LABEL)).append('"')
-            if (node.clickable) append(" [clickable]")
-            if (node.editable) append(" [editable]")
-            if (node.scrollable) append(" [scrollable]")
-            if (node.focused) append(" [focused]")
+            appendFlags(node)
         }
+    }
+
+    /** The text a node says about itself, or nothing. */
+    private fun meaningfulLabel(node: NodeRef): String? =
+        node.text?.takeIf { it.isNotBlank() } ?: node.contentDescription?.takeIf { it.isNotBlank() }
+
+    /** The action flags a node carries, appended in a fixed order. */
+    private fun StringBuilder.appendFlags(node: NodeRef) {
+        if (node.clickable) append(" [clickable]")
+        if (node.editable) append(" [editable]")
+        if (node.scrollable) append(" [scrollable]")
+        if (node.focused) append(" [focused]")
     }
 
     /**
@@ -86,10 +95,11 @@ public class TreeSummariser(
         var used = 0
         for (candidate in scored) {
             val cost = candidate.line.length + 1
+            // Once the budget is spent, every remaining line overshoots it and
+            // is skipped, so the walk needs no early exit of its own.
             if (used + cost > budget) continue
             kept += candidate.index
             used += cost
-            if (used >= budget) break
         }
 
         return lines.filterIndexed { index, _ -> index in kept }
@@ -104,11 +114,11 @@ public class TreeSummariser(
      */
     private fun score(line: String): Int {
         var value = 0
-        if (line.contains("[clickable]")) value += 8
-        if (line.contains("[editable]")) value += 6
-        if (line.contains("[focused]")) value += 4
-        if (line.contains("[scrollable]")) value += 2
-        if (line.contains('"')) value += 3
+        if (line.contains("[clickable]")) value += CLICKABLE_SCORE
+        if (line.contains("[editable]")) value += EDITABLE_SCORE
+        if (line.contains("[focused]")) value += FOCUSED_SCORE
+        if (line.contains("[scrollable]")) value += SCROLLABLE_SCORE
+        if (line.contains('"')) value += LABELLED_SCORE
         return value
     }
 
@@ -126,5 +136,15 @@ public class TreeSummariser(
 
         private const val MAX_LABEL: Int = 120
         private const val MAX_DEPTH: Int = 6
+
+        // The relative value of each kind of line. A focused field is worth
+        // the most because it is where text goes; a clickable label is next
+        // because it is a candidate for the next action; a bare label after
+        // that. The weights only matter in relation to one another.
+        private const val CLICKABLE_SCORE: Int = 8
+        private const val EDITABLE_SCORE: Int = 6
+        private const val FOCUSED_SCORE: Int = 4
+        private const val SCROLLABLE_SCORE: Int = 2
+        private const val LABELLED_SCORE: Int = 3
     }
 }

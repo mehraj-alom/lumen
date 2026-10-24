@@ -3,6 +3,36 @@ package dev.lumen.core.model
 import java.security.SecureRandom
 import kotlinx.serialization.Serializable
 
+/*
+ * The bit arithmetic of the Crockford base32 encoder, named once at file scope
+ * so that the encoder and the 80-bit increment of [UlidGenerator] read against
+ * the same vocabulary. The values are fixed by the ULID format, not chosen.
+ */
+
+/** A base32 character carries five bits. */
+private const val BITS_PER_CHAR: Int = 5
+
+/** The five bits a single base32 character holds. */
+private const val CHAR_MASK: Int = 0x1F
+
+/** The same mask for the 64-bit timestamp, which is shifted as a Long. */
+private const val TIMESTAMP_CHAR_MASK: Long = 0x1FL
+
+/** A random byte contributes eight bits to the accumulator. */
+private const val BITS_PER_BYTE: Int = 8
+
+/** The unsigned value of one byte. */
+private const val BYTE_MASK: Int = 0xFF
+
+/** The characters the 48-bit timestamp occupies. */
+private const val TIMESTAMP_CHARS: Int = 10
+
+/** The characters the 80 random bits occupy. */
+private const val RANDOM_CHARS: Int = 16
+
+/** The index of the first random character, right after the timestamp prefix. */
+private const val RANDOM_START: Int = TIMESTAMP_CHARS
+
 /**
  * A 26-character ULID: a 48-bit millisecond timestamp followed by 80 bits of
  * randomness, encoded with Crockford's base32 alphabet.
@@ -42,22 +72,22 @@ public object Ulid {
         val chars = CharArray(LENGTH)
 
         var timestamp = timestampMs
-        for (index in 9 downTo 0) {
-            chars[index] = ENCODING[(timestamp and 0x1FL).toInt()]
-            timestamp = timestamp ushr 5
+        for (index in TIMESTAMP_CHARS - 1 downTo 0) {
+            chars[index] = ENCODING[(timestamp and TIMESTAMP_CHAR_MASK).toInt()]
+            timestamp = timestamp ushr BITS_PER_CHAR
         }
 
         var bits = 0
         var accumulator = 0
         var source = 0
-        for (index in 0 until 16) {
-            if (bits < 5) {
-                accumulator = (accumulator shl 8) or (randomness[source].toInt() and 0xFF)
+        for (index in 0 until RANDOM_CHARS) {
+            if (bits < BITS_PER_CHAR) {
+                accumulator = (accumulator shl BITS_PER_BYTE) or (randomness[source].toInt() and BYTE_MASK)
                 source++
-                bits += 8
+                bits += BITS_PER_BYTE
             }
-            bits -= 5
-            chars[10 + index] = ENCODING[(accumulator ushr bits) and 0x1F]
+            bits -= BITS_PER_CHAR
+            chars[RANDOM_START + index] = ENCODING[(accumulator ushr bits) and CHAR_MASK]
         }
 
         return String(chars)
@@ -81,10 +111,10 @@ public object Ulid {
     public fun timestampOf(value: String): Long? {
         if (!isValid(value)) return null
         var timestamp = 0L
-        for (index in 0 until 10) {
+        for (index in 0 until TIMESTAMP_CHARS) {
             val digit = ENCODING.indexOf(value[index])
             if (digit < 0) return null
-            timestamp = (timestamp shl 5) or digit.toLong()
+            timestamp = (timestamp shl BITS_PER_CHAR) or digit.toLong()
         }
         return timestamp
     }
@@ -112,10 +142,7 @@ public object SecureRandomSource : RandomSource {
  * random component is incremented rather than redrawn. The increment is a
  * 80-bit big-endian addition with carry.
  */
-public class UlidGenerator(
-    private val randomSource: RandomSource = SecureRandomSource,
-    private val clock: LumenClock = SystemLumenClock,
-) {
+public class UlidGenerator(private val randomSource: RandomSource = SecureRandomSource, private val clock: LumenClock = SystemLumenClock) {
     private var lastTimestamp: Long = -1
     private var lastRandomness: ByteArray = ByteArray(Ulid.RANDOM_BYTES)
 
@@ -138,9 +165,9 @@ public class UlidGenerator(
     /** Adds one to an 80-bit big-endian value, or returns null on overflow. */
     private fun increment(value: ByteArray): ByteArray? {
         for (index in value.lastIndex downTo 0) {
-            val next = (value[index].toInt() and 0xFF) + 1
-            value[index] = (next and 0xFF).toByte()
-            if (next <= 0xFF) return value
+            val next = (value[index].toInt() and BYTE_MASK) + 1
+            value[index] = (next and BYTE_MASK).toByte()
+            if (next <= BYTE_MASK) return value
         }
         return null
     }

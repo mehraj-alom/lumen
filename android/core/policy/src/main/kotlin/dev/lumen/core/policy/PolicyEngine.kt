@@ -43,10 +43,7 @@ public sealed interface PolicyDecision {
  * that matches a class waits for a human; a step the engine refuses does not
  * run at all.
  */
-public class PolicyEngine(
-    private val classifier: DangerClassifier = DangerClassifier(),
-    private val grants: GrantStore = GrantStore(),
-) {
+public class PolicyEngine(private val classifier: DangerClassifier = DangerClassifier(), private val grants: GrantStore = GrantStore()) {
 
     /**
      * The decision for [request].
@@ -95,18 +92,37 @@ public class PolicyEngine(
         return if (severity(left) >= severity(right)) left else right
     }
 
-    private fun severity(riskClass: RiskClass): Int = when (riskClass) {
-        RiskClass.NONE -> 0
-        RiskClass.USER_PINNED -> 1
-        RiskClass.LEGAL -> 2
-        RiskClass.PERMISSION -> 3
-        RiskClass.ACCOUNT -> 4
-        RiskClass.COMMUNICATION -> 5
-        RiskClass.PUBLISH -> 6
-        RiskClass.CREDENTIAL -> 7
-        RiskClass.DELETE -> 8
-        RiskClass.PAYMENT -> 9
-        RiskClass.IRREVERSIBLE -> 10
+    private fun severity(riskClass: RiskClass): Int {
+        val rank = SEVERITY_ORDER.indexOf(riskClass)
+        // Deny by default: an unranked class must never compare as the least
+        // severe. Failing loudly here is safer than silently under-ranking a
+        // class that a future RiskClass value would add.
+        check(rank >= 0) { "$riskClass is missing from the severity ladder" }
+        return rank
+    }
+
+    private companion object {
+        /**
+         * The `PRD.md` §6 risk ladder, least severe first.
+         *
+         * A class's position in this list IS its severity value, so ranking a
+         * new class means placing it here at the right step. The order matches
+         * the ladder the engine compares against; reordering it changes which
+         * of two approval classes wins.
+         */
+        val SEVERITY_ORDER: List<RiskClass> = listOf(
+            RiskClass.NONE,
+            RiskClass.USER_PINNED,
+            RiskClass.LEGAL,
+            RiskClass.PERMISSION,
+            RiskClass.ACCOUNT,
+            RiskClass.COMMUNICATION,
+            RiskClass.PUBLISH,
+            RiskClass.CREDENTIAL,
+            RiskClass.DELETE,
+            RiskClass.PAYMENT,
+            RiskClass.IRREVERSIBLE,
+        )
     }
 }
 
@@ -123,21 +139,19 @@ public class GrantStore {
     private val grants = mutableMapOf<GrantKey, Long>()
 
     /** Grants [riskClass] for [runId] until [expiresAtMs]. */
-    public fun grant(runId: RunId, riskClass: RiskClass, expiresAtMs: Long): Unit =
-        synchronized(lock) {
-            grants[GrantKey(runId, riskClass)] = expiresAtMs
-        }
+    public fun grant(runId: RunId, riskClass: RiskClass, expiresAtMs: Long): Unit = synchronized(lock) {
+        grants[GrantKey(runId, riskClass)] = expiresAtMs
+    }
 
     /** Whether [riskClass] is granted for [runId] at [nowMs]. */
-    public fun isGranted(runId: RunId, riskClass: RiskClass, nowMs: Long): Boolean =
-        synchronized(lock) {
-            val expiry = grants[GrantKey(runId, riskClass)] ?: return@synchronized false
-            if (nowMs >= expiry) {
-                grants.remove(GrantKey(runId, riskClass))
-                return@synchronized false
-            }
-            true
+    public fun isGranted(runId: RunId, riskClass: RiskClass, nowMs: Long): Boolean = synchronized(lock) {
+        val expiry = grants[GrantKey(runId, riskClass)] ?: return@synchronized false
+        if (nowMs >= expiry) {
+            grants.remove(GrantKey(runId, riskClass))
+            return@synchronized false
         }
+        true
+    }
 
     /** Removes every grant for [runId]. */
     public fun clear(runId: RunId): Unit = synchronized(lock) {

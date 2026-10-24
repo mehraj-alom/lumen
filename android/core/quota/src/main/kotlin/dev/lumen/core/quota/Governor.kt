@@ -12,17 +12,10 @@ public enum class ThermalStatus {
 }
 
 /** A thermal reading. */
-public data class ThermalReading(
-    val temperatureCelsius: Double,
-    val status: ThermalStatus = ThermalStatus.NONE,
-)
+public data class ThermalReading(val temperatureCelsius: Double, val status: ThermalStatus = ThermalStatus.NONE)
 
 /** What the governor decided in response to a reading. */
-public data class GovernorDecision(
-    val workerLimit: Int,
-    val localInferenceAllowed: Boolean,
-    val reason: String,
-)
+public data class GovernorDecision(val workerLimit: Int, val localInferenceAllowed: Boolean, val reason: String)
 
 /**
  * The thermal governor.
@@ -78,10 +71,7 @@ public class ThermalGovernor(
 }
 
 /** A battery reading. */
-public data class BatteryReading(
-    val levelPercent: Int,
-    val isCharging: Boolean,
-)
+public data class BatteryReading(val levelPercent: Int, val isCharging: Boolean)
 
 /** What the battery governor decided. */
 public sealed interface BatteryDecision {
@@ -100,9 +90,7 @@ public sealed interface BatteryDecision {
  * still run a short goal manually; the governor only stops the agent from
  * starting work it cannot finish.
  */
-public class BatteryGovernor(
-    private val suspendBelowPercent: Int = DEFAULT_SUSPEND_BELOW_PERCENT,
-) {
+public class BatteryGovernor(private val suspendBelowPercent: Int = DEFAULT_SUSPEND_BELOW_PERCENT) {
     init {
         require(suspendBelowPercent in 1..100) { "the battery threshold must be a percentage" }
     }

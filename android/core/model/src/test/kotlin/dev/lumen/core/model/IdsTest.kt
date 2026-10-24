@@ -24,10 +24,10 @@ class UlidTest {
 
     @Test
     fun `a ulid rejects the ambiguous letters`() {
-        val base = "0123456789ABCDEFGHJKMNPQR"
+        val base = "0123456789ABCDEFGHJKMNPQRS"
         assertThat(base).hasLength(Ulid.LENGTH)
 
-        listOf("I", "L", "O", "U").forEach { character ->
+        listOf('I', 'L', 'O', 'U').forEach { character ->
             val candidate = base.replaceFirst('0', character)
             assertThat(candidate).hasLength(Ulid.LENGTH)
             assertThat(Ulid.isValid(candidate)).isFalse()

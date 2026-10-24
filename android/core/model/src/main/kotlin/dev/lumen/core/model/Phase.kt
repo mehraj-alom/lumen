@@ -128,10 +128,7 @@ public enum class ReasonSource {
  * failure rather than a silent omission in a trace.
  */
 @Serializable
-public data class Reason(
-    val source: ReasonSource,
-    val text: String,
-) {
+public data class Reason(val source: ReasonSource, val text: String) {
     init {
         require(text.isNotBlank()) { "a reason must not be blank (invariant I9)" }
     }

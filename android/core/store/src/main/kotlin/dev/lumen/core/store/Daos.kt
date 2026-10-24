@@ -74,12 +74,7 @@ public interface ApprovalDao {
     public suspend fun pending(runId: String): List<ApprovalEntity>
 
     @Transaction
-    public suspend fun resolve(
-        approvalId: String,
-        state: String,
-        resolvedAt: Long,
-        answerText: String?,
-    ) {
+    public suspend fun resolve(approvalId: String, state: String, resolvedAt: Long, answerText: String?) {
         val existing = find(approvalId) ?: return
         upsert(existing.copy(state = state, resolvedAt = resolvedAt, answerText = answerText))
     }

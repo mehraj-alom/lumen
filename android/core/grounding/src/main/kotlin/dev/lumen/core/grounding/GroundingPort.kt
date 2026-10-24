@@ -5,11 +5,7 @@ import dev.lumen.core.model.ErrorCode
 import dev.lumen.core.model.Observation
 
 /** What was asked of the grounding layer. */
-public data class ObservationRequest(
-    val includeScreenshot: Boolean = false,
-    val includeOverlays: Boolean = true,
-    val maxNodes: Int = 400,
-)
+public data class ObservationRequest(val includeScreenshot: Boolean = false, val includeOverlays: Boolean = true, val maxNodes: Int = 400)
 
 /** Where an observation came from. */
 public enum class GroundingSource {
@@ -24,11 +20,7 @@ public enum class GroundingSource {
 }
 
 /** The result of a grounding request. */
-public data class ObservationResult(
-    val source: GroundingSource,
-    val observation: Observation?,
-    val error: ApiError? = null,
-) {
+public data class ObservationResult(val source: GroundingSource, val observation: Observation?, val error: ApiError? = null) {
     /** Whether an observation was produced. */
     public val isUsable: Boolean get() = observation != null
 }

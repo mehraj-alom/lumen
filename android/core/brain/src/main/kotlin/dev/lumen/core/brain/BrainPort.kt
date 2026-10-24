@@ -36,11 +36,7 @@ public data class BrainReply(
 }
 
 /** The brain's judgement of a step that has run. */
-public data class Critique(
-    val verdict: Verdict,
-    val reason: String,
-    val observationSummary: String? = null,
-)
+public data class Critique(val verdict: Verdict, val reason: String, val observationSummary: String? = null)
 
 /** The request to plan a goal. */
 public data class PlanRequest(

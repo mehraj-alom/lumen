@@ -34,7 +34,7 @@ class SoakTest {
     @Test
     fun `a hundred runs leave no residue in the ledger`() = runTest {
         val goal = Goal(
-            id = RunId("01JBX0000000000000000000001"),
+            id = RunId("01JBX000000000000000000001"),
             text = "find the cheapest flight",
         )
 

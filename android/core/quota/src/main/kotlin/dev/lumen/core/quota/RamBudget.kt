@@ -7,11 +7,7 @@ package dev.lumen.core.quota
  * that is never released is a leak, and the budget is exact: it never
  * over-commits.
  */
-public data class Reservation(
-    val id: Long,
-    val category: RamCategory,
-    val amountMiB: Int,
-)
+public data class Reservation(val id: Long, val category: RamCategory, val amountMiB: Int)
 
 /** Why a reservation was refused. */
 public enum class RefusalReason {
@@ -29,11 +25,7 @@ public sealed interface ReservationResult {
     public data class Granted(val reservation: Reservation) : ReservationResult
 
     /** The memory is not available. The caller must not allocate. */
-    public data class Refused(
-        val reason: RefusalReason,
-        val requestedMiB: Int,
-        val availableMiB: Int,
-    ) : ReservationResult
+    public data class Refused(val reason: RefusalReason, val requestedMiB: Int, val availableMiB: Int) : ReservationResult
 }
 
 /**
@@ -44,9 +36,7 @@ public sealed interface ReservationResult {
  * model is never loaded "and we'll see" — it is admitted or it is not
  * (invariant I10).
  */
-public class RamBudget(
-    public val limitMiB: Int = RamCategory.TOTAL_LIMIT_MIB,
-) {
+public class RamBudget(public val limitMiB: Int = RamCategory.TOTAL_LIMIT_MIB) {
     private val lock = Any()
     private val usedByCategory = mutableMapOf<RamCategory, Int>()
     private val remainingByReservation = mutableMapOf<Long, Int>()
@@ -104,20 +94,19 @@ public class RamBudget(
      * @param amountMiB how much of the reservation to release. A partial
      *   release is used when only part of the memory was actually freed.
      */
-    public fun release(reservation: Reservation, amountMiB: Int = reservation.amountMiB): Unit =
-        synchronized(lock) {
-            val remaining = remainingByReservation[reservation.id] ?: return@synchronized
-            val released = amountMiB.coerceAtMost(remaining)
-            if (released <= 0) return@synchronized
+    public fun release(reservation: Reservation, amountMiB: Int = reservation.amountMiB): Unit = synchronized(lock) {
+        val remaining = remainingByReservation[reservation.id] ?: return@synchronized
+        val released = amountMiB.coerceAtMost(remaining)
+        if (released <= 0) return@synchronized
 
-            remainingByReservation[reservation.id] = remaining - released
-            if (remaining == released) {
-                remainingByReservation.remove(reservation.id)
-            }
-
-            val categoryUsed = usedByCategory[reservation.category] ?: 0
-            usedByCategory[reservation.category] = (categoryUsed - released).coerceAtLeast(0)
+        remainingByReservation[reservation.id] = remaining - released
+        if (remaining == released) {
+            remainingByReservation.remove(reservation.id)
         }
+
+        val categoryUsed = usedByCategory[reservation.category] ?: 0
+        usedByCategory[reservation.category] = (categoryUsed - released).coerceAtLeast(0)
+    }
 
     /** The memory claimed by [category], in MiB. */
     public fun usedMiB(category: RamCategory): Int = synchronized(lock) {
@@ -151,11 +140,7 @@ public class RamBudget(
 }
 
 /** A per-category report of the RAM budget. */
-public data class RamSnapshot(
-    val limitMiB: Int,
-    val usedMiB: Int,
-    val byCategory: Map<RamCategory, Int>,
-) {
+public data class RamSnapshot(val limitMiB: Int, val usedMiB: Int, val byCategory: Map<RamCategory, Int>) {
     /** The memory claimed by [category], in MiB. */
     public fun usedBy(category: RamCategory): Int = byCategory[category] ?: 0
 

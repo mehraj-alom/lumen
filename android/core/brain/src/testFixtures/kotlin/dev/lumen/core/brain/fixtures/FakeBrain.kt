@@ -18,9 +18,7 @@ import dev.lumen.core.model.Verdict
  * The fake is what lets the agent loop be tested without a model, a
  * network, or a device.
  */
-public class FakeBrain(
-    private val route: BrainRoute = BrainRoute.LOCAL,
-) : BrainPort {
+public class FakeBrain(override val route: BrainRoute = BrainRoute.LOCAL) : BrainPort {
 
     /** The plan the brain returns. */
     public var planReply: BrainReply = BrainReply(thought = "no plan", steps = emptyList())
@@ -30,6 +28,12 @@ public class FakeBrain(
 
     /** The judgement the brain returns. */
     public var critiqueReply: Critique = Critique(Verdict.CONTINUE, "all good")
+
+    /**
+     * Successive judgements, one per critique call; the last entry repeats.
+     * Takes precedence over [critiqueReply].
+     */
+    public var critiqueReplies: List<Critique> = emptyList()
 
     /** The error the brain fails with, or null. */
     public var failure: Exception? = null
@@ -54,15 +58,13 @@ public class FakeBrain(
     override suspend fun critique(request: CritiqueRequest): Critique {
         critiqueCalls++
         failure?.let { throw it }
-        return critiqueReply
+        if (critiqueReplies.isEmpty()) return critiqueReply
+        return critiqueReplies.getOrElse(critiqueCalls - 1) { critiqueReplies.last() }
     }
-
-    override val route: BrainRoute get() = route
 
     public companion object {
         /** A plan with one step. */
-        public fun planWith(vararg steps: PlannedStep): BrainReply =
-            BrainReply(thought = "scripted", steps = steps.toList())
+        public fun planWith(vararg steps: PlannedStep): BrainReply = BrainReply(thought = "scripted", steps = steps.toList())
 
         /** A step that taps a label. */
         public fun tapStep(intent: String, label: String): PlannedStep = PlannedStep(

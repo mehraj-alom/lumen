@@ -1,7 +1,9 @@
 package dev.lumen.core.brain
 
-import kotlinx.coroutines.delay
+import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
+import kotlinx.coroutines.delay
 
 /**
  * The one retry implementation.
@@ -15,7 +17,7 @@ public class RetryPolicy(
     private val initialDelayMs: Long = DEFAULT_INITIAL_DELAY_MS,
     private val multiplier: Double = DEFAULT_MULTIPLIER,
     private val maxDelayMs: Long = DEFAULT_MAX_DELAY_MS,
-    private val isRetryable: (Throwable) -> Boolean = { true },
+    private val isRetryable: (Throwable) -> Boolean = { it.isTransientBrainFailure() },
 ) {
     init {
         require(maxAttempts > 0) { "there must be at least one attempt" }
@@ -26,6 +28,11 @@ public class RetryPolicy(
     /**
      * Runs [block] until it succeeds or the attempts run out.
      *
+     * Only the transport's own failure vocabulary is retried: a brain that
+     * is unavailable or a link that broke. Anything else the [block] throws
+     * is either fatal or not worth repeating, so it propagates untouched,
+     * and a cancelled run propagates as cancellation (invariant I12).
+     *
      * @param block receives the attempt number, starting at one
      */
     public suspend fun <T> execute(block: suspend (attempt: Int) -> T): T {
@@ -35,13 +42,22 @@ public class RetryPolicy(
         while (true) {
             try {
                 return block(attempt)
-            } catch (error: Throwable) {
-                if (attempt >= maxAttempts || !isRetryable(error)) throw error
-                delay(delayMs)
-                delayMs = min((delayMs * multiplier).toLong(), maxDelayMs)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: BrainUnavailable) {
+                delayMs = awaitNextAttempt(error, attempt, delayMs)
+                attempt++
+            } catch (error: IOException) {
+                delayMs = awaitNextAttempt(error, attempt, delayMs)
                 attempt++
             }
         }
+    }
+
+    private suspend fun awaitNextAttempt(error: Exception, attempt: Int, delayMs: Long): Long {
+        if (attempt >= maxAttempts || !isRetryable(error)) throw error
+        delay(delayMs)
+        return min((delayMs * multiplier).toLong(), maxDelayMs)
     }
 
     /** The delay before [attempt], for a test or a log line. */
@@ -67,3 +83,10 @@ public class RetryPolicy(
         public const val DEFAULT_MAX_DELAY_MS: Long = 8_000L
     }
 }
+
+/**
+ * Whether a failure is worth another attempt: an unreachable or busy brain, or
+ * a transport error. A reply that was merely wrong is not — the same prompt
+ * earns the same bad reply.
+ */
+public fun Throwable.isTransientBrainFailure(): Boolean = this is BrainUnavailable || this is IOException

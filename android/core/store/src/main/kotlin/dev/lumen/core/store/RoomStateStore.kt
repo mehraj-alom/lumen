@@ -28,11 +28,12 @@ import kotlinx.serialization.json.Json
  * contract in `TECHSTACK.md` §6, and the JSON blobs hold the polymorphic
  * model types that do not have a natural column shape.
  */
-public class RoomStateStore(
-    private val database: LumenDatabase,
-) : StateStore {
+public class RoomStateStore(private val database: LumenDatabase) : StateStore {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     override suspend fun savePlan(plan: Plan) {
         database.withTransaction {
@@ -60,16 +61,15 @@ public class RoomStateStore(
         )
     }
 
-    override suspend fun loadPlanHistory(runId: RunId): List<Plan> =
-        database.plans().history(runId.value).map { header ->
-            Plan(
-                runId = runId,
-                version = header.version,
-                steps = database.steps().forPlan(runId.value, header.version).map { it.toStep() },
-                createdAtMs = header.createdAt,
-                summary = header.summary,
-            )
-        }
+    override suspend fun loadPlanHistory(runId: RunId): List<Plan> = database.plans().history(runId.value).map { header ->
+        Plan(
+            runId = runId,
+            version = header.version,
+            steps = database.steps().forPlan(runId.value, header.version).map { it.toStep() },
+            createdAtMs = header.createdAt,
+            summary = header.summary,
+        )
+    }
 
     override suspend fun saveStep(runId: RunId, step: Step) {
         database.steps().upsert(step.toEntity(runId))
@@ -78,14 +78,9 @@ public class RoomStateStore(
     override suspend fun loadSteps(runId: RunId, planVersion: Int): List<Step> =
         database.steps().forPlan(runId.value, planVersion).map { it.toStep() }
 
-    override suspend fun loadStep(stepId: StepId): Step? =
-        database.steps().find(stepId.value)?.toStep()
+    override suspend fun loadStep(stepId: StepId): Step? = database.steps().find(stepId.value)?.toStep()
 
-    override suspend fun appendObservation(
-        runId: RunId,
-        stepId: StepId,
-        observation: Observation,
-    ) {
+    override suspend fun appendObservation(runId: RunId, stepId: StepId, observation: Observation) {
         database.observations().insert(
             ObservationEntity(
                 runId = runId.value,
@@ -101,16 +96,15 @@ public class RoomStateStore(
         )
     }
 
-    override suspend fun loadObservations(runId: RunId): List<Observation> =
-        database.observations().forRun(runId.value).map { entity ->
-            Observation(
-                app = entity.app,
-                nodes = json.decodeFromString(entity.nodesJson),
-                overlays = json.decodeFromString(entity.overlaysJson),
-                settle = entity.settleJson?.let { json.decodeFromString(it) },
-                capturedAtMs = entity.capturedAt,
-            )
-        }
+    override suspend fun loadObservations(runId: RunId): List<Observation> = database.observations().forRun(runId.value).map { entity ->
+        Observation(
+            app = entity.app,
+            nodes = json.decodeFromString(entity.nodesJson),
+            overlays = json.decodeFromString(entity.overlaysJson),
+            settle = entity.settleJson?.let { json.decodeFromString(it) },
+            capturedAtMs = entity.capturedAt,
+        )
+    }
 
     override suspend fun saveApproval(approval: ApprovalRecord) {
         database.approvals().upsert(
@@ -134,8 +128,7 @@ public class RoomStateStore(
         )
     }
 
-    override suspend fun loadApproval(approvalId: ApprovalId): ApprovalRecord? =
-        database.approvals().find(approvalId.value)?.toApproval()
+    override suspend fun loadApproval(approvalId: ApprovalId): ApprovalRecord? = database.approvals().find(approvalId.value)?.toApproval()
 
     override suspend fun loadPendingApprovals(runId: RunId): List<ApprovalRecord> =
         database.approvals().pending(runId.value).map { it.toApproval() }
@@ -152,17 +145,16 @@ public class RoomStateStore(
         )
     }
 
-    override suspend fun loadBudgetLedger(runId: RunId): List<BudgetEntry> =
-        database.budgetLedger().forRun(runId.value).map { entity ->
-            BudgetEntry(
-                runId = runId,
-                category = entity.category,
-                kind = runCatching { BudgetEntryKind.valueOf(entity.kind) }
-                    .getOrDefault(BudgetEntryKind.RESERVE),
-                amountBytes = entity.amountBytes,
-                createdAtMs = entity.createdAt,
-            )
-        }
+    override suspend fun loadBudgetLedger(runId: RunId): List<BudgetEntry> = database.budgetLedger().forRun(runId.value).map { entity ->
+        BudgetEntry(
+            runId = runId,
+            category = entity.category,
+            kind = runCatching { BudgetEntryKind.valueOf(entity.kind) }
+                .getOrDefault(BudgetEntryKind.RESERVE),
+            amountBytes = entity.amountBytes,
+            createdAtMs = entity.createdAt,
+        )
+    }
 
     override suspend fun loadSetting(key: String): String? = database.settings().value(key)
 

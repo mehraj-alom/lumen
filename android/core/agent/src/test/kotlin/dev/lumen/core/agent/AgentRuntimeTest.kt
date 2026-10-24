@@ -3,6 +3,7 @@ package dev.lumen.core.agent
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.agent.fixtures.InMemoryApprovalSignal
 import dev.lumen.core.agent.fixtures.ScriptedEnvironment
+import dev.lumen.core.brain.BrainReply
 import dev.lumen.core.brain.BrainRoute
 import dev.lumen.core.brain.Critique
 import dev.lumen.core.brain.fixtures.FakeBrain
@@ -23,7 +24,7 @@ import org.junit.Test
 class AgentRuntimeTest {
 
     private val goal = Goal(
-        id = RunId("01JBX0000000000000000000001"),
+        id = RunId("01JBX000000000000000000001"),
         text = "find the cheapest flight",
     )
 
@@ -45,6 +46,23 @@ class AgentRuntimeTest {
         abort = AbortSignal(),
         clock = { clock.nowMs() },
     )
+
+    @Test
+    fun `an empty plan is a failed run, not a satisfied goal`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(listOf(ScriptedEnvironment.screen()))
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = BrainReply(thought = "nothing to do", steps = emptyList())
+        }
+
+        val outcome = runtime(brain, environment, store, clock).run(goal)
+
+        // A run that acted on nothing has not satisfied anything, and the
+        // trace has to say so rather than report success (invariant I9).
+        assertThat(outcome).isInstanceOf(RunOutcome.Failed::class.java)
+        assertThat(environment.performed).isEmpty()
+    }
 
     @Test
     fun `a run executes the plan and completes`() = runTest {
@@ -77,7 +95,7 @@ class AgentRuntimeTest {
         val plan = store.loadPlan(goal.id)
         assertThat(plan?.steps).isNotEmpty()
         plan?.steps?.forEach { step ->
-            assertThat(step.reason.text).isNotBlank()
+            assertThat(step.reason.text.trim()).isNotEmpty()
         }
     }
 
@@ -103,7 +121,10 @@ class AgentRuntimeTest {
         val brain = FakeBrain(BrainRoute.LOCAL).apply {
             planReply = FakeBrain.planWith(FakeBrain.tapStep("tap continue", "Continue"))
             replanReply = FakeBrain.planWith(FakeBrain.tapStep("tap the other thing", "Other"))
-            critiqueReply = Critique(Verdict.REPLAN, "the screen did not change")
+            critiqueReplies = listOf(
+                Critique(Verdict.REPLAN, "the screen did not change"),
+                Critique(Verdict.CONTINUE, "the revised step worked"),
+            )
         }
 
         val outcome = runtime(brain, environment, store, clock).run(goal)

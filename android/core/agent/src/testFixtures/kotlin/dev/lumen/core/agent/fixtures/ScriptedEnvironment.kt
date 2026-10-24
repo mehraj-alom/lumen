@@ -1,9 +1,9 @@
 package dev.lumen.core.agent.fixtures
 
+import dev.lumen.core.action.ActionResult
 import dev.lumen.core.agent.ApprovalSignal
 import dev.lumen.core.agent.StepEnvironment
 import dev.lumen.core.model.Action
-import dev.lumen.core.action.ActionResult
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.ErrorCode
@@ -19,9 +19,7 @@ import kotlinx.coroutines.delay
  * possible: it produces a screen per step, and the screens are the ones the
  * scenario needs — a payment form, a publish screen, a message screen.
  */
-public class ScriptedEnvironment(
-    private val screens: List<Observation> = emptyList(),
-) : StepEnvironment {
+public class ScriptedEnvironment(private val screens: List<Observation> = emptyList()) : StepEnvironment {
 
     /** Every action that was performed, in order. */
     public val performed: MutableList<Action> = mutableListOf()
@@ -137,10 +135,8 @@ public class ScriptedEnvironment(
  * The decision may arrive from another process, so the signal polls the
  * durable store rather than being pushed to.
  */
-public class InMemoryApprovalSignal(
-    private val store: dev.lumen.core.model.StateStore,
-    private val pollIntervalMs: Long = 10L,
-) : ApprovalSignal {
+public class InMemoryApprovalSignal(private val store: dev.lumen.core.model.StateStore, private val pollIntervalMs: Long = 10L) :
+    ApprovalSignal {
 
     override suspend fun await(approvalId: ApprovalId): ApprovalState {
         while (true) {
