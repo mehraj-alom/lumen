@@ -107,15 +107,16 @@ enforced by the build rather than by review.
 
 - [x] `QuotaWatchdog` — the tick loop, the category reservations, the eviction ladder from `ARCH.md` §7.1.
 - [x] `RamBudget` — reserve / release / report, exact MiB accounting.
-- [x] `ThermalGovernor` — reads thermal status, drives worker count and inference suspension.
-- [x] `BatteryGovernor` — suspends autonomous runs below 20 % when not charging.
+- [x] `ThermalGovernor` — reads thermal status, drives worker count and inference suspension. **Corrected at M15:** the decision function is built and tested; the reading and the acting are not. Nothing in `:platform` or `:agent` constructs it.
+- [x] `BatteryGovernor` — suspends autonomous runs below 20 % when not charging. **Corrected at M15:** as above — the arithmetic exists, the caller does not.
 - [x] `WorkerPool` — a `Semaphore(4)` with a reported depth and a denied-request error.
 - [x] `MemoryProbe` — the platform interface that reads PSS/RSS; a fake for tests.
 - [x] Tests: the full `Q-RAM-*`, `Q-THM-*` sets, including the concurrent over-commit case.
 - [x] Tool: `tools/quota-probe` — per-category RAM report.
 
-**Gate:** `./gradlew :core:quota:quotaTest` passes.
-**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 55 Kotlin files, and every scenario in the suites was traced by hand against the watchdog's arithmetic.
+**Gate:** `./gradlew :core:quota:test` passes.
+**Status:** implemented, as the arithmetic. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 55 Kotlin files, and every scenario in the suites was traced by hand against the watchdog's arithmetic.
+**Not implemented, found at M15:** the two governors have no production caller. `ThermalGovernor.decide` and `BatteryGovernor.decide` are pure functions over a reading the device never takes and a decision nothing ever acts on — no `:platform` probe of thermal status or battery level, no construction of either governor in `AgentRuntimeFactory`, no path from a decision to `WorkerPool` or to local inference. The RAM side of this milestone is wired and enforced; the thermal and battery rows of `AGENTS.md` §2 are not, and the item to close that is in M15.
 **Quota impact:** the watchdog itself holds a budget, a map of evictables and a last-tick record — a few KiB, inside the 64 MiB `BASELINE` budget.
 
 **Notes for the next milestone:**
@@ -279,7 +280,7 @@ enforced by the build rather than by review.
 - [x] Tests: the full `L-100-*` and `L-REC-*` sets, plus the property tests.
 - [x] Determinism: the same seed and the same screen sequence produce an identical plan.
 
-**Gate:** `./gradlew :core:agent:loopRecoveryTest` passes.
+**Gate:** `./gradlew :core:agent:test` passes.
 **Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 99 Kotlin files, every internal import resolved, every package matching its directory, every `@Serializable` property type resolvable, and no unused imports.
 **Quota impact:** the loop's working set is budgeted at 96 MiB and is compacted to disk under pressure. A hundred-step run holds one plan, one step and one observation at a time.
 
@@ -429,19 +430,24 @@ enforced by the build rather than by review.
 - [x] `tools/quota-probe.sh` — the live RAM and storage report.
 - [x] `OPERATIONS.md` — install, permissions, pairing, spectating, takeover, budgets, troubleshooting.
 - [x] The Play Store disclosure: the accessibility-service rationale, shown in-app before enabling.
-- [x] Crash reporting: opt-in, redacted, off by default.
+- [ ] Crash reporting: opt-in, redacted, off by default. **Reopened at M15.** The reporter is built and tested — `CrashReporter` redacts structurally and writes only into the sandbox — and nothing installs it: no `Thread.setDefaultUncaughtExceptionHandler` call exists in `:app` or `:agent`, and `CrashReporter` is constructed only in its own test. A crash today produces no report at all, which is neither "off by default" nor anything the user can turn on.
 - [x] The release checklist: `RELEASE.md` — the gates, the native flavour, the disclosure, the privacy claims, the version rename.
-- [x] The settings screen: the indicator mode, the brain pin, spectating, crash reporting, the idle window.
+- [ ] The settings screen: the indicator mode, the brain pin, spectating, crash reporting, the idle window. **Reopened at M15.** The screen is built and every control is a real composable, and it is dead code: nothing in the app calls `SettingsScreen`, so it is not reachable from the console (`MainActivity` and `LumenConsole` never name it). Two of its switches have no path even if it were reached — the spectating toggle cannot relax `ContentEgressGuard`, which `AgentRuntimeFactory` constructs with `spectatingEnabled = false` as a `val` with no `setSpectating` on the IPC surface, and the crash-reporting toggle has no listener. The item stays open until the screen is on the console and its switches arrive at the processes they claim to control.
 - [x] `tools/soak.sh` — the 30-minute thermal and battery soak, and its report.
+- [ ] Wire the thermal and battery governors. `ThermalGovernor` and `BatteryGovernor` decide correctly for a reading they are never given: no platform probe takes the thermal status or the battery level, neither governor is constructed outside its own unit test, and no decision reaches `WorkerPool` or local inference. Until then `AGENTS.md` §2's throttle and guard rows are a specification, and `I10` is not satisfied for them. Needs a platform capability, which is a Phase 4 gate decision before any code.
+- [ ] Publish the loop's progress. `AgentRuntimeFacade` publishes state at the start of a run, on an approval, and at the end; `AgentRuntime` has no way to tell the facade about a step, so `RunState.stepIndex` stays 0 and `currentIntent` stays null and the console's step counter, intent line and plan graph never move while the agent works.
+- [ ] Install the crash reporter. `CrashReporter` is never constructed outside its test and no uncaught-exception handler is set in either process, so the opt-in path above has nothing to opt into.
+- [ ] Put a cost on the budget meter. `BudgetPayload.costMicros` reports 0 because nothing adds up what a run is worth; `BrainReply` already carries prompt and completion token counts, and a per-model price table is the missing piece. Shipping a figure without one would be an invention.
+- [x] Make the budget meters read the run. `AgentRuntimeFacade.budget` returned `storageUsedMiB = 0L`, `storageLimitMiB = 20_000L` and `elapsedMs = 0L` as constants; it now reports the sandbox's own `StorageQuota.snapshot()` and measures wall clock from the moment the goal was started, stopped when the run reaches a terminal phase. No unit test covers it: the facade is constructed with `RoomStateStore`, which is Android-only, so `:agent`'s JVM suite cannot build one — the change stands on the read types (`StorageSnapshot.usedMiB` and `limitMiB` are `Long`, and `BudgetPayload` takes `Long`) until the first CI run that can start.
 - [ ] The release build itself: `lint ktlintCheck detekt test dependencyGuard dependencyLedger` plus the connected suite, run on CI and on a device.
 - [ ] The 30-minute thermal soak, run on a device.
 
 **Gate:** every gate in `AGENTS.md` §7 passes.
-**Status:** the code is complete and the static half of the gate has been executed: `lint ktlintCheck detekt test dependencyGuard dependencyLedger` on the ledger work — BUILD SUCCESSFUL, 281 unit tests, no failures. That run is the exception, not the workflow: `AGENTS.md` §8 puts every build on CI, and **CI cannot run at all right now.** Its jobs never start — run 22 (`295d9b3`, the twelve-commit hardening batch) failed in three seconds with no step executed, and the annotation on every job reads "The job was not started because recent account payments have failed or your spending limit needs to be increased." That is an account action, not a code action, and no push will produce a verdict until Billing & plans is fixed.
+**Status:** the invariant surface is complete — the ledger is on the dispatch path, the quotas are enforced by admission control, HITL is deny-by-default, abort is honoured inside one action boundary — and the audit that found the gaps above is the reason this line used to read "the code is complete". The static half of the gate has been executed once: `lint ktlintCheck detekt test dependencyGuard dependencyLedger` on the ledger work — BUILD SUCCESSFUL, 281 unit tests, no failures. That run is the exception, not the workflow: `AGENTS.md` §8 puts every build on CI, and **CI cannot run at all right now.** Its jobs never start — run 22 (`295d9b3`, the twelve-commit hardening batch) failed in three seconds with no step executed, and so did run 23 (`bda8bb2`, the ledger plus docs batch), with the same annotation on every job: "The job was not started because recent account payments have failed or your spending limit needs to be increased." The `Specification consistency` job needs no more than a checkout and a grep and it still cannot start, which is the proof that this is an account action and not a code action. No push will produce a verdict until Billing & plans is fixed.
 
-The last runs that did execute (20 and 21) failed inside the `Lint` step on `:agent:compileDebugKotlin` — `AgentRuntimeService.kt` passing `RunState` where `AgentStatePayload` was expected and omitting `stepCount`. Those are the compile errors the batch that landed as `295d9b3` fixes, so run 22 was the first chance CI had to see the corrected tree, and it never got to start. `Specification consistency` and `Web console` were green in both.
+The last runs that did execute (20 and 21) failed inside the `Lint` step on `:agent:compileDebugKotlin` — `AgentRuntimeService.kt` passing `RunState` where `AgentStatePayload` was expected and omitting `stepCount`. Those are the compile errors the batch that landed as `295d9b3` fixes, so runs 22 and 23 were chances CI never got to take. `Specification consistency` and `Web console` were green in both.
 
-What is left, in order: fix the account's billing so a run can start; read run 23 for the gate verdict on `295d9b3` and the ledger work; then the two items that need hardware — the connected suite on the emulator (the `device` job is newly wired and has never executed) and the 30-minute thermal and battery soak on a handset. `ci.yml` now caps every job with `timeout-minutes` and runs the gate in one Gradle invocation, because a hung emulator is how a monthly minute budget disappears.
+What is left, in order: fix the account's billing so a run can start; read the first run that executes for the gate verdict on `295d9b3` and the ledger work; close the four gaps above, of which the governor one needs a decision before code; then the two items that need hardware — the connected suite on the emulator (the `device` job is newly wired and has never executed) and the 30-minute thermal and battery soak on a handset. `ci.yml` now caps every job with `timeout-minutes` and runs the gate in one Gradle invocation, because a hung emulator is how a monthly minute budget disappears.
 **Quota impact:** the steady-state footprint is documented in the release notes.
 
 **Notes for the next milestone:**

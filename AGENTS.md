@@ -82,6 +82,8 @@ Any change to a number below requires an ADR and a `TESTING.md` update.
 | CPU governor | Nice the agent process; never `SCHED_FIFO` |
 | Battery guard | Below 20 % and not charging → suspend autonomous runs |
 
+**Which of these are enforced today.** The RAM, storage, step and wall-clock limits are enforced by construction: admission control in `QuotaWatchdog`, `SandboxPath` + `StorageQuota` on every file operation, and `RunConfig` checked in the loop. The two rows that depend on a device reading are **not wired to anything yet**: `ThermalGovernor` and `BatteryGovernor` exist in `:core:quota` with unit tests over their arithmetic, and no production code constructs them, reads a thermal status or a battery level, or acts on a decision. A run therefore does not slow down when the phone is hot and does not stop when the battery drops — `TASK.md` M15 carries the item. `I10` is the rule that this gap violates, and until it closes the thermal and battery rows above are a specification, not a guarantee.
+
 ---
 
 ## 3. Repository layout
@@ -219,7 +221,7 @@ A milestone in `TASK.md` is done when:
 - **Phase 1 complete** — `RE_ANALYSIS.md` (frozen reference analysis).
 - **Phase 2 complete** — decisions D1–D6 locked above.
 - **Phase 3 complete and approved** — the spec suite in this directory.
-- **Phase 4 in progress** — M0 through M14 are implemented. M15 (hardening and release) is the active milestone, and its remaining items need a device and a release build.
+- **Phase 4 in progress** — M0 through M14 are implemented, except that M11 was reopened at M15 for the one control it never shipped (§9 of `PRD.md`: takeover on the device console). M15 (hardening and release) is the active milestone, and its remaining items need a device and a release build.
 
 **Do not write application code outside the current milestone in `TASK.md`.**
 
@@ -228,3 +230,5 @@ A milestone in `TASK.md` is done when:
 What was measured here, once, before that rule was set: during the M15 ledger work the full JVM gate (`lint ktlintCheck detekt test dependencyGuard dependencyLedger`) ran green — 281 unit tests, no failures. Treat that as history, not as a workflow to repeat; the milestone status lines in `TASK.md` carry the run references.
 
 What cannot run anywhere but on a device, by construction: `connectedDebugAndroidTest`, the golden-screenshot suite, `tools/quota-probe.sh`, the thermal and battery soak, and the release build's signing path. Those are CI's `device` job or the operator's handset, and a milestone that claims one of them without a device report attached is not done.
+
+**M15 also found five claims that the code does not support**, and each is now an open item in `TASK.md` §M15 rather than a checked box: the thermal and battery governors are never called (§2 above), the settings screen is not reachable from the console and its spectating switch reaches neither the process that sends frames nor the `ContentEgressGuard` it is supposed to relax, the crash reporter is built but never installed as an uncaught-exception handler, and the run state the console publishes goes from planning to terminal with nothing in between, so the console's step counter, intent line and plan graph never move during a run. None of them is a quota or a safety breach in the direction that matters — each fails closed — but each is a promise in these documents that the build does not keep.

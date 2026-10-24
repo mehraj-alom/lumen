@@ -81,6 +81,8 @@ Three ways, in increasing order of detail:
 
 The live view needs screen content to leave the device, so it is **off by default** and it is a separate switch from the rest of the console. With it off, no screen content leaves the device at all — not through the web console, not through the brain, not in a trace. This is enforced at the point of sending, not by convention.
 
+**In this build the switch does not exist yet, and spectating cannot be turned on.** The runtime constructs its egress guard with spectating off, the setting never reaches the process that sends frames, and the screen where the toggle is drawn is not reachable from the console. The consequence is the safe one — nothing leaves the device — and the web console shows state, not the live screen. `TASK.md` M15 carries the item.
+
 ---
 
 ## 6. Take over

@@ -29,6 +29,8 @@ Every task name above is registered: the two dependency guards live on the root 
 
 **A release is not a release until the device suite has run on a physical device with the accessibility service enabled.** The instrumentation tests for the accessibility service, the overlay, the shader and the indicator all need it.
 
+**Five controls this checklist takes for granted are not wired yet**, and each is an open item in `TASK.md` §M15 with the evidence beside it: the thermal and battery governors have no caller, so nothing throttles a hot phone or stops a run at 19 %, the settings screen is drawn but unreachable and its spectating switch reaches neither process, the crash reporter is never installed as the uncaught-exception handler, the console's step counter never leaves zero during a run, and the cost meter has no source. Every one of them fails closed — no quota is exceeded, no content leaves the device — so they gate the *promises* in `OPERATIONS.md`, not the safety of the build. A release note has to say so rather than describe a control the user cannot find.
+
 ---
 
 ## 2. The native flavour
