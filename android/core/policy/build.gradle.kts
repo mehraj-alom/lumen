@@ -19,5 +19,6 @@ dependencies {
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
     testImplementation(kotlin("test"))
+    testImplementation(testFixtures(project(":core:model")))
     testImplementation(testFixtures(project(":core:grounding")))
 }

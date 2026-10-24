@@ -20,12 +20,18 @@ dependencies {
     implementation(project(":core:brain"))
     implementation(project(":core:protocol"))
 
+    testFixturesApi(project(":core:model"))
+    testFixturesApi(project(":core:action"))
+    testFixturesApi(project(":core:brain"))
+    testFixturesImplementation(libs.kotlin.stdlib)
+    testFixturesImplementation(libs.coroutines.core)
+
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
     testImplementation(kotlin("test"))
+    testImplementation(testFixtures(project(":core:agent")))
     testImplementation(testFixtures(project(":core:model")))
-    testImplementation(testFixtures(project(":core:action")))
     testImplementation(testFixtures(project(":core:brain")))
     testImplementation(testFixtures(project(":core:grounding")))
 }

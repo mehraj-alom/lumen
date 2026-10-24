@@ -16,6 +16,10 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:protocol"))
 
+    testFixturesApi(project(":core:model"))
+    testFixturesImplementation(libs.kotlin.stdlib)
+    testFixturesImplementation(libs.coroutines.core)
+
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)

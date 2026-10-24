@@ -15,6 +15,9 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(project(":core:model"))
 
+    testFixturesApi(project(":core:model"))
+    testFixturesImplementation(libs.kotlin.stdlib)
+
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)

@@ -102,7 +102,8 @@ data class DeclaredDependency(
 fun resolveDeclaredDependencies(projectDir: File): List<DeclaredDependency> {
     val catalogFile = File(projectDir, "gradle/libs.versions.toml")
     val catalog = if (catalogFile.exists()) catalogFile.readText() else ""
-    val aliasRegex = Regex("""([A-Za-z0-9._-]+)\s*=\s*\{[^}]*?module\s*=\s*"([A-Za-z0-9_.]+):([A-Za-z0-9_.-]+)""", RegexOption.DOT_MATCHES_ALL)
+    val aliasRegex =
+        Regex("""([A-Za-z0-9._-]+)\s*=\s*\{[^}]*?module\s*=\s*"([A-Za-z0-9_.]+):([A-Za-z0-9_.-]+)""", RegexOption.DOT_MATCHES_ALL)
     val accessorToCoordinate = aliasRegex.findAll(catalog)
         .associate { match ->
             val accessor = "libs." + match.groupValues[1].replace("-", ".")
@@ -220,7 +221,9 @@ val dependencyGuard by tasks.registering {
                     val isStore = dep.module.startsWith("core/store")
                     val isAllowedException = isStore && coreStoreException.any { dep.group == it }
                     if (!isAllowedException) {
-                        violations += "core boundary: ${dep.module} declares '${dep.coordinate}' in '${dep.configuration}' — core/* must be pure Kotlin/JVM (ADR 0002 exempts :core:store for androidx.room, androidx.datastore and androidx.sqlite only)"
+                        violations += "core boundary: ${dep.module} declares '${dep.coordinate}' in " +
+                            "'${dep.configuration}' — core/* must be pure Kotlin/JVM (ADR 0002 exempts " +
+                            ":core:store for androidx.room, androidx.datastore and androidx.sqlite only)"
                     }
                 }
             }
@@ -228,7 +231,8 @@ val dependencyGuard by tasks.registering {
         // 2. pending ledger (awaiting explicit user approval)
         declared.forEach { dep ->
             if (pendingPrefixes.any { dep.group == it || dep.group.startsWith("$it.") }) {
-                violations += "pending approval: ${dep.module} declares '${dep.coordinate}' — blocked until the user approves it (TASK.md Appendix)"
+                violations += "pending approval: ${dep.module} declares '${dep.coordinate}' — " +
+                    "blocked until the user approves it (TASK.md Appendix)"
             }
         }
 
@@ -236,7 +240,8 @@ val dependencyGuard by tasks.registering {
         declared.forEach { dep ->
             val ok = approvedPrefixes.any { dep.group == it || dep.group.startsWith("$it.") }
             if (!ok) {
-                violations += "unapproved dependency: ${dep.module} declares '${dep.coordinate}' — add it to gradle/approved-dependencies.txt and to the TECHSTACK.md §10 ledger"
+                violations += "unapproved dependency: ${dep.module} declares '${dep.coordinate}' — " +
+                    "add it to gradle/approved-dependencies.txt and to the TECHSTACK.md §10 ledger"
             }
         }
 
