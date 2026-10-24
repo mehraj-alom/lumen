@@ -135,8 +135,8 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
      */
     public fun start(): AgentRuntimeFacade {
         val root = sandboxRoot()
-        val quota = storageQuota()
-        val workspace = workspace(root, quota)
+        val storage = storageQuota()
+        val workspace = workspace(root, storage)
         val store = store()
         val egress = ContentEgressGuard(spectatingEnabled = false)
         val bridge = AccessibilityBridgeClient(context)
@@ -150,6 +150,7 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
             approvals = approvals(store),
             policy = policy(),
             quota = quota(),
+            storage = storage,
         )
     }
 

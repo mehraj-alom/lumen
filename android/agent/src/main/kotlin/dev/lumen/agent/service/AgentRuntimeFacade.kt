@@ -23,6 +23,7 @@ import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.ApprovalDecision
 import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.quota.QuotaWatchdog
+import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ public class AgentRuntimeFacade(
     private val approvals: ApprovalBroker,
     private val policy: PolicyEngine,
     private val quota: QuotaWatchdog,
+    private val storage: StorageQuota,
     private val clock: LumenClock = SystemLumenClock,
 ) {
 
@@ -64,6 +66,8 @@ public class AgentRuntimeFacade(
     private var currentRunId: String = ""
     private var state: RunState = RunState(runId = "")
     private var takeoverActive = false
+    private var runStartedAtMs = 0L
+    private var runEndedAtMs = 0L
 
     /** Attaches the service that publishes the state. */
     public fun attach(service: AgentRuntimeService) {
@@ -79,6 +83,8 @@ public class AgentRuntimeFacade(
     public fun startGoal(payload: GoalPayload) {
         currentRunId = payload.runId
         takeoverActive = false
+        runStartedAtMs = clock.nowMs()
+        runEndedAtMs = 0L
         publish(RunState(runId = payload.runId, phase = Phase.PLANNING))
 
         scope.launch {
@@ -198,20 +204,36 @@ public class AgentRuntimeFacade(
     public fun budget(runId: String): BudgetPayload {
         correlate(runId, "budget")
         val snapshot = quota.budget.snapshot()
+        val storageSnapshot = storage.snapshot()
         return BudgetPayload(
             ramUsedMiB = snapshot.usedMiB,
             ramLimitMiB = snapshot.limitMiB,
             ramByCategory = snapshot.byCategory.mapKeys { it.key.name },
-            storageUsedMiB = 0L,
-            storageLimitMiB = 20_000L,
+            storageUsedMiB = storageSnapshot.usedMiB,
+            storageLimitMiB = storageSnapshot.limitMiB,
             stepsUsed = state.stepIndex,
             stepsSoftLimit = 150,
             stepsHardLimit = 400,
-            elapsedMs = 0L,
+            elapsedMs = elapsedMs(),
             wallClockLimitMs = 45L * 60L * 1000L,
+            // There is no cost to report yet. `BrainReply` carries prompt and
+            // completion token counts, but nothing adds up what they are worth,
+            // so a figure here would be an invention rather than a measurement.
             costMicros = 0L,
             costLimitMicros = 0L,
         )
+    }
+
+    /**
+     * How long the live run has been going.
+     *
+     * A terminal phase stops the clock at the moment the run got there, so a
+     * finished run reports its own duration instead of the time since it ended.
+     */
+    private fun elapsedMs(): Long {
+        if (runStartedAtMs == 0L) return 0L
+        val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
+        return (now - runStartedAtMs).coerceAtLeast(0L)
     }
 
     /**
@@ -230,6 +252,7 @@ public class AgentRuntimeFacade(
 
     private fun publish(next: RunState) {
         state = next
+        if (next.phase.isTerminal && runStartedAtMs != 0L) runEndedAtMs = clock.nowMs()
         service?.publishState(next)
         service?.publishEvent(
             type = "state.${next.phase.name.lowercase()}",
