@@ -62,6 +62,11 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:sandbox"))
 
+    // The ledger port (`LedgerSink`) and its entry type live in `:core:action`,
+    // which is inside `core/` — ADR 0002's restriction is about what lies
+    // outside it. `api`, because this module's public class implements the port.
+    api(project(":core:action"))
+
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
