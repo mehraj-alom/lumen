@@ -1,8 +1,8 @@
 package dev.lumen.core.store
 
-import dev.lumen.core.model.LumenClock
 import dev.lumen.core.model.RunId
 import dev.lumen.core.sandbox.SandboxPath
+import dev.lumen.core.sandbox.StorageBucket
 import dev.lumen.core.sandbox.WorkspaceManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -32,63 +32,64 @@ public data class TraceEvent(
  */
 public class TraceWriter(
     private val workspace: WorkspaceManager,
-    private val clock: LumenClock,
     private val maxBytesPerFile: Long = DEFAULT_MAX_BYTES_PER_FILE,
     private val retentionMs: Long = DEFAULT_RETENTION_MS,
 ) {
 
     private val json = Json { encodeDefaults = true }
     private val lock = Any()
+    private var currentRunId: String? = null
+    private var currentPart = 0
     private var currentBytes = 0L
-    private var currentPath: SandboxPath? = null
 
     /** Appends an event to the trace of [runId]. */
     public suspend fun append(event: TraceEvent) {
         val line = json.encodeToString(event) + "\n"
         val bytes = line.toByteArray()
-        val path = pathFor(event.runId, event.tsMs)
 
-        synchronized(lock) {
-            if (currentPath != path) {
-                currentPath = path
-                currentBytes = if (workspace.exists(path)) workspace.read(path).size.toLong() else 0L
+        val part = synchronized(lock) {
+            if (currentRunId != event.runId) {
+                currentRunId = event.runId
+                currentPart = 0
+                currentBytes = 0L
+            } else if (currentBytes + bytes.size > maxBytesPerFile) {
+                // The file is full: the next line starts the next part, so a
+                // run's trace stays readable in order and no file grows past
+                // its size limit.
+                currentPart += 1
+                currentBytes = 0L
             }
+            currentBytes += bytes.size
+            currentPart
         }
 
-        workspace.write(path, bytes)
-        synchronized(lock) { currentBytes += bytes.size.toLong() }
+        workspace.append(pathFor(event.runId, event.tsMs, part), bytes)
     }
 
     /** Starts a new trace file, so that the current one stops growing. */
     public fun roll(): Unit = synchronized(lock) {
-        currentPath = null
+        currentRunId = null
+        currentPart = 0
         currentBytes = 0L
     }
 
     /** Deletes the trace files that are past the retention window. */
     public fun prune(nowMs: Long): Int {
         val cutoff = nowMs - retentionMs
-        var removed = 0
-
-        for (bucket in listOf(dev.lumen.core.sandbox.StorageBucket.TRACES)) {
-            for (path in workspace.list(bucket)) {
-                val name = path.toRelativePath()
-                val timestamp = timestampFromName(name)
-                if (timestamp != null && timestamp < cutoff) {
-                    if (workspace.delete(path)) removed++
-                }
-            }
+        return workspace.list(StorageBucket.TRACES).count { path ->
+            val timestamp = timestampFromName(path.toRelativePath())
+            timestamp != null && timestamp < cutoff && workspace.delete(path)
         }
-        return removed
     }
 
-    private fun pathFor(runId: String, tsMs: Long): SandboxPath {
+    private fun pathFor(runId: String, tsMs: Long, part: Int): SandboxPath {
         val day = tsMs / MILLIS_PER_DAY
-        return SandboxPath.of("traces/$runId-$day.jsonl")
+        val suffix = if (part == 0) "" else ".$part"
+        return SandboxPath.of("traces/$runId-$day$suffix.jsonl")
     }
 
     private fun timestampFromName(name: String): Long? {
-        val stamp = name.substringAfterLast('-').removeSuffix(".jsonl")
+        val stamp = name.substringAfterLast('-').removeSuffix(".jsonl").substringBefore('.')
         return stamp.toLongOrNull()?.times(MILLIS_PER_DAY)
     }
 
@@ -110,10 +111,7 @@ public class TraceWriter(
  * for the trace. They are the first thing to be evicted, and a frame that is
  * more than a day old is downscaled rather than kept at full resolution.
  */
-public class FrameStore(
-    private val workspace: WorkspaceManager,
-    private val clock: LumenClock,
-) {
+public class FrameStore(private val workspace: WorkspaceManager) {
 
     /** Stores a frame and returns the path it was written to. */
     public suspend fun store(runId: RunId, bytes: ByteArray, capturedAtMs: Long): SandboxPath {
@@ -123,21 +121,15 @@ public class FrameStore(
     }
 
     /** The path a frame with these coordinates would have. */
-    public fun pathFor(runId: RunId, capturedAtMs: Long): SandboxPath =
-        SandboxPath.of("frames/$runId-$capturedAtMs.jpg")
+    public fun pathFor(runId: RunId, capturedAtMs: Long): SandboxPath = SandboxPath.of("frames/$runId-$capturedAtMs.jpg")
 
     /** Removes the frames that are past the retention window. */
     public fun prune(nowMs: Long): Int {
         val cutoff = nowMs - RETENTION_MS
-        var removed = 0
-
-        for (path in workspace.list(dev.lumen.core.sandbox.StorageBucket.FRAMES)) {
+        return workspace.list(StorageBucket.FRAMES).count { path ->
             val capturedAt = capturedAtFromName(path.toRelativePath())
-            if (capturedAt != null && capturedAt < cutoff) {
-                if (workspace.delete(path)) removed++
-            }
+            capturedAt != null && capturedAt < cutoff && workspace.delete(path)
         }
-        return removed
     }
 
     private fun capturedAtFromName(name: String): Long? {

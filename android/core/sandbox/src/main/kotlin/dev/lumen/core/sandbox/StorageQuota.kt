@@ -43,11 +43,7 @@ public enum class StorageBucket(public val budgetMiB: Long) {
 }
 
 /** A file held in the sandbox, as the quota sees it. */
-public data class StorageEntry(
-    val path: SandboxPath,
-    val sizeBytes: Long,
-    val lastAccessMs: Long,
-)
+public data class StorageEntry(val path: SandboxPath, val sizeBytes: Long, val lastAccessMs: Long)
 
 /**
  * The storage accounting.
@@ -57,9 +53,7 @@ public data class StorageEntry(
  * cleaned up later. Eviction is least-recently-used, and the user's workspace
  * is never swept.
  */
-public class StorageQuota(
-    private val budgets: Map<StorageBucket, Long> = StorageBucket.entries.associateWith { it.budgetMiB },
-) {
+public class StorageQuota(private val budgets: Map<StorageBucket, Long> = StorageBucket.entries.associateWith { it.budgetMiB }) {
     private val lock = Any()
     private val entries = mutableMapOf<SandboxPath, StorageEntry>()
 
@@ -72,12 +66,10 @@ public class StorageQuota(
     }
 
     /** The bytes still writable in [bucket]. */
-    public fun availableBytes(bucket: StorageBucket): Long =
-        budgetMiB(bucket) * BYTES_PER_MIB - usedBytes(bucket)
+    public fun availableBytes(bucket: StorageBucket): Long = budgetMiB(bucket) * BYTES_PER_MIB - usedBytes(bucket)
 
     /** Whether [bytes] would fit in [bucket] right now. */
-    public fun wouldExceed(bucket: StorageBucket, bytes: Long): Boolean =
-        usedBytes(bucket) + bytes > budgetMiB(bucket) * BYTES_PER_MIB
+    public fun wouldExceed(bucket: StorageBucket, bytes: Long): Boolean = usedBytes(bucket) + bytes > budgetMiB(bucket) * BYTES_PER_MIB
 
     /** Records a file. */
     public fun register(path: SandboxPath, sizeBytes: Long, lastAccessMs: Long): Unit = synchronized(lock) {
@@ -104,22 +96,21 @@ public class StorageQuota(
      * The order is least-recently-used first. The user's workspace is never
      * in the list, whatever the pressure.
      */
-    public fun evictionCandidates(bucket: StorageBucket, bytes: Long): List<StorageEntry> =
-        synchronized(lock) {
-            val candidates = entries.values
-                .filter { StorageBucket.bucketOf(it.path) == bucket }
-                .filter { bucket.evictable }
-                .sortedBy { it.lastAccessMs }
+    public fun evictionCandidates(bucket: StorageBucket, bytes: Long): List<StorageEntry> = synchronized(lock) {
+        val candidates = entries.values
+            .filter { StorageBucket.bucketOf(it.path) == bucket }
+            .filter { bucket.evictable }
+            .sortedBy { it.lastAccessMs }
 
-            var freed = 0L
-            val selected = mutableListOf<StorageEntry>()
-            for (candidate in candidates) {
-                if (freed >= bytes) break
-                selected += candidate
-                freed += candidate.sizeBytes
-            }
-            selected
+        var freed = 0L
+        val selected = mutableListOf<StorageEntry>()
+        for (candidate in candidates) {
+            if (freed >= bytes) break
+            selected += candidate
+            freed += candidate.sizeBytes
         }
+        selected
+    }
 
     /**
      * The least-recently-used file in [bucket], or null when there is none.
@@ -149,11 +140,7 @@ public class StorageQuota(
 }
 
 /** A per-bucket report of the storage accounting. */
-public data class StorageSnapshot(
-    val limitMiB: Long,
-    val usedMiB: Long,
-    val byBucket: Map<StorageBucket, Long>,
-) {
+public data class StorageSnapshot(val limitMiB: Long, val usedMiB: Long, val byBucket: Map<StorageBucket, Long>) {
     /** The MiB held in [bucket]. */
     public fun usedBy(bucket: StorageBucket): Long = byBucket[bucket] ?: 0L
 }

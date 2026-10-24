@@ -47,46 +47,55 @@ public value class SandboxPath(public val relative: String) {
          */
         public fun validate(relative: String) {
             if (relative.isBlank()) {
-                throw SandboxViolation(relative, "a sandbox path must not be blank")
+                refuse(relative, "a sandbox path must not be blank")
             }
 
             // Control characters, including NUL.
-            if (relative.any { it.code < 0x20 || it.code == 0x7F }) {
-                throw SandboxViolation(relative, "a sandbox path must not contain control characters")
+            if (relative.any { it.code < LOWEST_PRINTABLE || it.code == DELETE }) {
+                refuse(relative, "a sandbox path must not contain control characters")
             }
 
             // Absolute paths.
             if (relative.startsWith("/")) {
-                throw SandboxViolation(relative, "a sandbox path must be relative")
+                refuse(relative, "a sandbox path must be relative")
             }
             if (relative.startsWith("~")) {
-                throw SandboxViolation(relative, "a sandbox path must not start with '~'")
+                refuse(relative, "a sandbox path must not start with '~'")
             }
 
             // Windows drive prefixes and UNC paths, as defence in depth.
-            if (WINDOWS_DRIVE.matches(relative)) {
-                throw SandboxViolation(relative, "a sandbox path must not name a drive")
+            if (WINDOWS_DRIVE.containsMatchIn(relative)) {
+                refuse(relative, "a sandbox path must not name a drive")
             }
             if (relative.startsWith("\\\\")) {
-                throw SandboxViolation(relative, "a sandbox path must not be a UNC path")
+                refuse(relative, "a sandbox path must not be a UNC path")
             }
 
             // Parent traversal, as a segment rather than as a substring.
             val segments = relative.split('/')
             if (segments.any { it == ".." }) {
-                throw SandboxViolation(relative, "a sandbox path must not traverse upwards")
+                refuse(relative, "a sandbox path must not traverse upwards")
             }
             if (segments.any { it == "." }) {
-                throw SandboxViolation(relative, "a sandbox path must not contain a '.' segment")
+                refuse(relative, "a sandbox path must not contain a '.' segment")
             }
 
             // Foreign filesystems. These are absolute already, but a
             // relative-looking path that names one is refused too.
             val first = segments.firstOrNull().orEmpty()
             if (first in FOREIGN_FILESYSTEMS) {
-                throw SandboxViolation(relative, "a sandbox path must not name the '$first' filesystem")
+                refuse(relative, "a sandbox path must not name the '$first' filesystem")
             }
         }
+
+        /**
+         * The single throw site of [validate], so that adding a check does not
+         * add a way out.
+         */
+        private fun refuse(relative: String, reason: String): Nothing = throw SandboxViolation(relative, reason)
+
+        private const val LOWEST_PRINTABLE = 0x20
+        private const val DELETE = 0x7F
 
         private val WINDOWS_DRIVE = Regex("^[A-Za-z]:")
         private val FOREIGN_FILESYSTEMS = setOf(
@@ -102,7 +111,5 @@ public value class SandboxPath(public val relative: String) {
 }
 
 /** A path that cannot be used inside the sandbox. */
-public class SandboxViolation(
-    public val requested: String,
-    message: String,
-) : Exception("$message (requested: '$requested')")
+public class SandboxViolation(public val requested: String, message: String, cause: Throwable? = null) :
+    Exception("$message (requested: '$requested')", cause)

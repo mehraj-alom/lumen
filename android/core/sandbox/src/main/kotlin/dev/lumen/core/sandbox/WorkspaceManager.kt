@@ -5,14 +5,11 @@ import java.io.File
 import java.io.IOException
 
 /** A write that would push a bucket past its budget. */
-public class StorageQuotaExceeded(
-    public val bucket: StorageBucket,
-    public val requestedBytes: Long,
-    public val availableBytes: Long,
-) : Exception(
-    "the write of $requestedBytes bytes does not fit in ${bucket.name.lowercase()}, " +
-        "which has $availableBytes bytes left",
-)
+public class StorageQuotaExceeded(public val bucket: StorageBucket, public val requestedBytes: Long, public val availableBytes: Long) :
+    Exception(
+        "the write of $requestedBytes bytes does not fit in ${bucket.name.lowercase()}, " +
+            "which has $availableBytes bytes left",
+    )
 
 /**
  * The only way to read or write a file.
@@ -22,11 +19,7 @@ public class StorageQuotaExceeded(
  * bucket budget. When a bucket is full, the least-recently-used files in it
  * are evicted first — except in the user's workspace, which is never swept.
  */
-public class WorkspaceManager(
-    private val root: SandboxRoot,
-    private val quota: StorageQuota,
-    private val clock: LumenClock,
-) {
+public class WorkspaceManager(private val root: SandboxRoot, private val quota: StorageQuota, private val clock: LumenClock) {
 
     /**
      * Writes [bytes] to [path].
@@ -45,13 +38,44 @@ public class WorkspaceManager(
             file.parentFile?.mkdirs()
             file.writeBytes(bytes)
         } catch (error: IOException) {
-            throw SandboxViolation(path.relative, "the file could not be written: ${error.message}")
+            throw SandboxViolation(path.relative, "the file could not be written", error)
         }
 
         if (bucket != null) {
             quota.register(path, bytes.size.toLong(), clock.nowMs())
         }
         return bytes.size.toLong()
+    }
+
+    /**
+     * Appends [bytes] to the file at [path], creating it when it is missing.
+     *
+     * This is the only way a file grows in place: [write] replaces the
+     * contents, and an append that went through [write] would silently drop
+     * everything already in the file.
+     *
+     * @return the number of bytes added
+     */
+    public fun append(path: SandboxPath, bytes: ByteArray): Long {
+        val file = root.resolve(path)
+        val bucket = root.bucketOf(path)
+        val sizeBefore = if (file.isFile) file.length() else 0L
+
+        if (bucket != null && quota.wouldExceed(bucket, bytes.size.toLong())) {
+            makeRoom(bucket, bytes.size.toLong())
+        }
+
+        try {
+            file.parentFile?.mkdirs()
+            file.appendBytes(bytes)
+        } catch (error: IOException) {
+            throw SandboxViolation(path.relative, "the file could not be appended", error)
+        }
+
+        if (bucket != null) {
+            quota.register(path, file.length(), clock.nowMs())
+        }
+        return file.length() - sizeBefore
     }
 
     /** Reads the file at [path]. */
@@ -65,7 +89,7 @@ public class WorkspaceManager(
             quota.touch(path, clock.nowMs())
             return bytes
         } catch (error: IOException) {
-            throw SandboxViolation(path.relative, "the file could not be read: ${error.message}")
+            throw SandboxViolation(path.relative, "the file could not be read", error)
         }
     }
 

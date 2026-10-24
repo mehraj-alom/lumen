@@ -18,7 +18,7 @@ public class SandboxRoot(rootDirectory: File) {
     public val root: File = try {
         rootDirectory.canonicalFile
     } catch (error: IOException) {
-        throw SandboxViolation(rootDirectory.path, "the sandbox root could not be resolved")
+        throw SandboxViolation(rootDirectory.path, "the sandbox root could not be resolved", error)
     }
 
     init {
@@ -38,7 +38,7 @@ public class SandboxRoot(rootDirectory: File) {
         val canonical = try {
             candidate.canonicalFile
         } catch (error: IOException) {
-            throw SandboxViolation(path.relative, "the path could not be resolved")
+            throw SandboxViolation(path.relative, "the path could not be resolved", error)
         }
 
         if (!isInsideRoot(canonical)) {
