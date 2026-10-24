@@ -5,7 +5,8 @@ android/*/build/
 android/*/*/build/
 android/local.properties
 android/.kotlin/
-android/.cxx/
+# The CMake/NDK configure output, in every module that has a native build.
+.cxx/
 *.apk
 *.aab
 *.ap_
@@ -30,6 +31,9 @@ Thumbs.db
 # --- Local analysis scratch (never committed) ---
 .rea-work/
 *.log
+.build-logs/
+session-*.md
+.qoder/
 
 # --- The reference APK is not part of the repository ---
 # The clean-room rule (AGENTS.md §5) is that RE_ANALYSIS.md is the only
