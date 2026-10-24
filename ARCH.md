@@ -172,7 +172,7 @@ sequenceDiagram
 | Exactly one action is in flight | The actor is single-threaded; the loop awaits `ActionResult` before the next step |
 | An observation always follows a mutating action | `Actor` composes them; there is no "act without observe" path |
 | A step cannot begin without a persisted `Reason` | `Step.reason` is non-null in the schema |
-| No step dispatches without a ledger pre-state | `ActionLedger.append()` fsyncs before the gesture is dispatched |
+| No step dispatches without a ledger pre-state | The loop reaches the device only through `LedgeredActionExecutor`, which calls `ActionLedger.record` before the delegate. `FileLedgerSink` forces the line to the device, and an entry that did not become durable denies the action |
 | A step that has run is never picked again | The plan is updated **in memory** as well as in the store, and `nextStep` reads the in-memory plan. A step that ran and was not marked would be picked again, and the run would never advance |
 | The loop can be aborted at any boundary | `AbortSignal` is checked before dispatch and between steps |
 | The loop never blocks on HITL | `ApprovalBroker` returns immediately with a pending id; the step waits on a flow owned by the run |

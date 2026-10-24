@@ -1,5 +1,8 @@
 package dev.lumen.core.agent
 
+import dev.lumen.core.action.ActionLedger
+import dev.lumen.core.action.ActionLedgerEntry
+import dev.lumen.core.action.LedgeredActionExecutor
 import dev.lumen.core.brain.BrainPort
 import dev.lumen.core.brain.BrainReply
 import dev.lumen.core.brain.CritiqueRequest
@@ -42,12 +45,15 @@ public class AgentRuntime(
     private val policy: PolicyEngine,
     private val approvals: ApprovalBroker,
     private val store: StateStore,
+    private val ledger: ActionLedger,
     private val approvalSignal: ApprovalSignal,
     private val ids: UlidGenerator,
     private val config: RunConfig = RunConfig(),
     private val abort: AbortSignal = AbortSignal(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+
+    private val device = DeviceActionExecutor(environment)
 
     /**
      * Runs [goal] to completion, to failure, or to an abort.
@@ -194,7 +200,7 @@ public class AgentRuntime(
 
         if (abort.isAborted) return StepResult.Aborted
 
-        return dispatchAction(goal, plan, step)
+        return dispatchAction(goal, plan, step, observation)
     }
 
     /**
@@ -232,9 +238,26 @@ public class AgentRuntime(
      * Performs the action, records its observation, and asks the critic. A
      * failed action is recorded as failed and ends the step; otherwise the
      * critic's verdict decides how the step resolves.
+     *
+     * The action reaches the device through the ledger and nothing else: an
+     * action whose pre-state could not be written is denied there, and the
+     * loop sees it as a failed action (I6).
      */
-    private suspend fun dispatchAction(goal: Goal, plan: Plan, step: Step): StepResult {
-        val result = environment.perform(step.action)
+    private suspend fun dispatchAction(goal: Goal, plan: Plan, step: Step, observation: Observation?): StepResult {
+        val executor = LedgeredActionExecutor(
+            delegate = device,
+            ledger = ledger,
+            entry = ActionLedgerEntry(
+                runId = goal.id,
+                stepId = step.id,
+                action = step.action,
+                reason = step.reason,
+                preState = preStateDigest(observation),
+                startedAtMs = clock(),
+            ),
+        )
+
+        val result = executor.dispatch(step.action)
         if (!result.ok) {
             val reason = result.error?.message ?: "the action failed"
             withState(plan, step, StepState.FAILED)
@@ -329,6 +352,25 @@ public class AgentRuntime(
     }
 
     private suspend fun deviceState(): DeviceState = DeviceState(foregroundPackage = environment.foregroundPackage())
+
+    /**
+     * The pre-state the ledger records for an action about to be dispatched.
+     *
+     * It is a digest and not the screen: the app in front, how many nodes were
+     * visible, the signature the settle detector compares against, and where
+     * the captured frame lives in the sandbox. Together those say what the
+     * device looked like before the agent touched it, which is what a reversal
+     * needs, without copying screen text into a file the egress guard treats as
+     * content (I11).
+     */
+    private fun preStateDigest(observation: Observation?): String? = observation?.let { screen ->
+        buildString {
+            append("app=").append(screen.app)
+            append(";nodes=").append(screen.nodes.size)
+            append(";signature=").append(screen.signature ?: "none")
+            screen.screenshot?.let { append(";frame=").append(it.path) }
+        }
+    }
 
     /** The outcome of one step. */
     private sealed interface StepResult {

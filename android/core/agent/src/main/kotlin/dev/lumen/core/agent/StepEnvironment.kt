@@ -1,5 +1,6 @@
 package dev.lumen.core.agent
 
+import dev.lumen.core.action.ActionExecutor
 import dev.lumen.core.action.ActionResult
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.ApprovalState
@@ -23,6 +24,21 @@ public interface StepEnvironment {
 
     /** The package currently in front, or null on a virtual display. */
     public suspend fun foregroundPackage(): String?
+}
+
+/**
+ * The device, seen as the single dispatch funnel.
+ *
+ * The loop does not call [StepEnvironment.perform] directly. It dispatches
+ * through a `LedgeredActionExecutor`, which records the action and the state
+ * that preceded it before the device is touched, and this adapter is what that
+ * executor delegates to. Keeping the two apart is what makes invariant I6 a
+ * rule of construction rather than a convention: there is no short path from
+ * the loop to the screen.
+ */
+public class DeviceActionExecutor(private val environment: StepEnvironment) : ActionExecutor {
+
+    override suspend fun dispatch(action: Action): ActionResult = environment.perform(action)
 }
 
 /**

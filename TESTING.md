@@ -35,6 +35,7 @@
 | `FakeClock` | `LumenClock` with `advance(ms)`; virtual time everywhere |
 | `FakeBrain` | Returns scripted plans; can be told to fail, time out, or escalate |
 | `FakeApprovalSurface` | Records approval requests; answers on demand |
+| `FakeLedgerSink` | Records `ActionLedgerEntry`s; can be told to refuse, which is how the fail-closed dispatch path is exercised |
 | `FakeQuotaProbe` | Reports a configurable RSS/PSS/storage reading |
 | `FakeStorage` | An in-memory `SandboxPath` implementation with a real size accounting model |
 | `FakeTransport` | An in-memory control/bulk transport pair; can inject latency, 401, 500, truncation |
@@ -142,6 +143,8 @@ The detector watches two independent signals: the **event clock** and the **shap
 | T-DSP-08 | `givenForegroundPackageChanged_whenDispatching_thenStepAborts` | The foreground guard |
 | T-DSP-09 | `givenAbortSignal_whenDispatching_thenNothingIsDispatched` | I12 |
 | T-DSP-10 | `givenLedgerAppendFails_whenDispatching_thenActionDoesNotRun` | The write-ahead log is a precondition |
+| T-DSP-11 | `givenLoopDispatch_whenRecording_thenLedgerEntryPrecedesTheDevice` | I6: nothing reaches the device before the record |
+| T-DSP-12 | `givenCancellationInsideLedgerWrite_whenRunning_thenRunCancelsAndNothingIsDispatched` | An abort during the write stays an abort (I12) |
 
 ---
 

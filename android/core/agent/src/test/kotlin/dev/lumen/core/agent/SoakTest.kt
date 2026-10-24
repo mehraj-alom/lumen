@@ -1,6 +1,8 @@
 package dev.lumen.core.agent
 
 import com.google.common.truth.Truth.assertThat
+import dev.lumen.core.action.ActionLedger
+import dev.lumen.core.action.fixtures.FakeLedgerSink
 import dev.lumen.core.agent.fixtures.InMemoryApprovalSignal
 import dev.lumen.core.agent.fixtures.ScriptedEnvironment
 import dev.lumen.core.brain.BrainReply
@@ -51,12 +53,14 @@ class SoakTest {
                 critiqueReply = Critique(Verdict.CONTINUE, "as expected")
             }
 
+            val sink = FakeLedgerSink()
             val runtime = AgentRuntime(
                 brain = brain,
                 environment = environment,
                 policy = PolicyEngine(),
                 approvals = ApprovalBroker(store, clock),
                 store = store,
+                ledger = ActionLedger(sink),
                 approvalSignal = InMemoryApprovalSignal(store),
                 ids = UlidGenerator(clock = clock),
                 clock = { clock.nowMs() },
@@ -78,9 +82,10 @@ class SoakTest {
             assertThat(store.observations).hasSize(100)
             assertThat(store.steps).hasSize(100)
 
-            // The ledger must not grow without bound: one row per step, and
-            // nothing left over from the previous run.
-            assertThat(store.ledger.size).isAtMost(100)
+            // The ledger must not grow without bound: one entry per action,
+            // and nothing left over from the previous run.
+            assertThat(sink.entries).hasSize(100)
+            assertThat(sink.entries.map { it.seq }).containsExactlyElementsIn(0L until 100L).inOrder()
             assertThat(store.settings).isEmpty()
         }
     }

@@ -1,6 +1,8 @@
 package dev.lumen.core.agent
 
 import com.google.common.truth.Truth.assertThat
+import dev.lumen.core.action.ActionLedger
+import dev.lumen.core.action.fixtures.FakeLedgerSink
 import dev.lumen.core.agent.fixtures.InMemoryApprovalSignal
 import dev.lumen.core.agent.fixtures.ScriptedEnvironment
 import dev.lumen.core.brain.BrainReply
@@ -80,6 +82,7 @@ class HundredStepScenarioTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             clock = { clock.nowMs() },
@@ -115,6 +118,7 @@ class HundredStepScenarioTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             clock = { clock.nowMs() },
@@ -151,6 +155,7 @@ class HundredStepScenarioTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             clock = { clock.nowMs() },
@@ -189,6 +194,7 @@ class HundredStepScenarioTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             clock = { clock.nowMs() },
@@ -213,6 +219,49 @@ class HundredStepScenarioTest {
     }
 
     @Test
+    fun `L-100-04 every mutating step has a pre-state`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(screens())
+        val sink = FakeLedgerSink()
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = plan()
+        }
+
+        val runtime = AgentRuntime(
+            brain = brain,
+            environment = environment,
+            policy = PolicyEngine(),
+            approvals = ApprovalBroker(store, clock),
+            store = store,
+            ledger = ActionLedger(sink),
+            approvalSignal = InMemoryApprovalSignal(store),
+            ids = UlidGenerator(clock = clock),
+            clock = { clock.nowMs() },
+        )
+
+        val approver = launch {
+            while (true) {
+                store.loadPendingApprovals(goal.id).forEach { record ->
+                    store.saveApproval(record.copy(state = ApprovalState.APPROVED))
+                }
+                delay(10)
+            }
+        }
+
+        runtime.run(goal)
+
+        approver.cancel()
+        // Every action that changes the device is recorded with the screen it
+        // started from, which is what a reversal reads (invariant I6).
+        val mutating = store.steps.values.filter { it.action.mutating }
+        assertThat(mutating).isNotEmpty()
+        val recorded = sink.entries.filter { it.action.mutating }
+        assertThat(recorded).hasSize(mutating.size)
+        assertThat(recorded.map { it.preState }).doesNotContain(null)
+    }
+
+    @Test
     fun `L-100-07 the trace reconstructs the run`() = runTest {
         val store = InMemoryStateStore()
         val clock = ManualClock(1_000L)
@@ -227,6 +276,7 @@ class HundredStepScenarioTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             clock = { clock.nowMs() },

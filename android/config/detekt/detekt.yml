@@ -21,14 +21,16 @@ complexity:
     # the Compose convention; the preview default is what makes that readable.
     ignoreAnnotated:
       - "Composable"
-    # `AgentRuntime` is the loop's composition root: every parameter is a port
-    # the run is tested against (brain, environment, policy, approvals, store,
-    # signal, ids). Grouping them into a holder would not shorten the list, it
-    # would move it to another constructor, and a test would no longer show
-    # which collaborator it is faking. Scoped to that one file so the rule
-    # still bites every other class.
+    # `AgentRuntime` and `AgentRuntimeFacade` are the loop's composition root:
+    # every parameter is a port the run is tested against (brain, environment,
+    # policy, approvals, store, ledger, signal, ids). Grouping them into a
+    # holder would not shorten the list, it would move it to another
+    # constructor, and a test would no longer show which collaborator it is
+    # faking. Scoped to those two files so the rule still bites every other
+    # class.
     excludes:
       - "**/core/agent/src/main/kotlin/**/AgentRuntime.kt"
+      - "**/agent/src/main/kotlin/**/AgentRuntimeFacade.kt"
   TooManyFunctions:
     active: true
     thresholdInFiles: 30

@@ -2,6 +2,7 @@ package dev.lumen.agent
 
 import android.content.Context
 import dev.lumen.agent.service.AgentRuntimeFacade
+import dev.lumen.core.action.ActionLedger
 import dev.lumen.core.brain.BrainPort
 import dev.lumen.core.brain.BrainRouter
 import dev.lumen.core.brain.CloudBrain
@@ -20,6 +21,7 @@ import dev.lumen.core.sandbox.SandboxRoot
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.sandbox.WorkspaceManager
 import dev.lumen.core.store.DatabaseKeyProvider
+import dev.lumen.core.store.FileLedgerSink
 import dev.lumen.core.store.LumenDatabase
 import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
@@ -65,6 +67,16 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
 
     /** The policy engine. */
     public fun policy(): PolicyEngine = PolicyEngine()
+
+    /**
+     * The write-ahead ledger.
+     *
+     * Every action is recorded in the `traces/` bucket, and the write is
+     * forced to the device before the call returns, so an action that cannot
+     * be audited is never dispatched (invariant I6). The sink is the ledger's
+     * only path out of the process, and it goes through the sandbox.
+     */
+    public fun ledger(workspace: WorkspaceManager): ActionLedger = ActionLedger(FileLedgerSink(workspace))
 
     /** The quota engine, with the platform's memory probe. */
     public fun quota(): QuotaWatchdog = QuotaWatchdog(
@@ -134,6 +146,7 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
             environment = environment(bridge),
             brain = brain(egress),
             store = store,
+            ledger = ledger(workspace),
             approvals = approvals(store),
             policy = policy(),
             quota = quota(),

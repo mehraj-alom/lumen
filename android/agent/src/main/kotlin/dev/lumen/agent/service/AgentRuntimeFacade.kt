@@ -6,6 +6,7 @@ import dev.lumen.agent.ipc.BudgetPayload
 import dev.lumen.agent.ipc.GoalPayload
 import dev.lumen.agent.ipc.Payloads
 import dev.lumen.agent.ipc.PreviewPayload
+import dev.lumen.core.action.ActionLedger
 import dev.lumen.core.agent.AgentRuntime
 import dev.lumen.core.agent.ApprovalSignal
 import dev.lumen.core.agent.IndicatorState
@@ -40,6 +41,7 @@ public class AgentRuntimeFacade(
     private val environment: StepEnvironment,
     private val brain: BrainPort,
     private val store: RoomStateStore,
+    private val ledger: ActionLedger,
     private val approvals: ApprovalBroker,
     private val policy: PolicyEngine,
     private val quota: QuotaWatchdog,
@@ -87,6 +89,7 @@ public class AgentRuntimeFacade(
                 policy = policy,
                 approvals = approvals,
                 store = store,
+                ledger = ledger,
                 approvalSignal = approvalSignal(),
                 ids = ids,
                 abort = abort,

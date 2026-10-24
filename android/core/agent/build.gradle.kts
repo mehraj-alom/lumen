@@ -31,6 +31,7 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(kotlin("test"))
     testImplementation(testFixtures(project(":core:agent")))
+    testImplementation(testFixtures(project(":core:action")))
     testImplementation(testFixtures(project(":core:model")))
     testImplementation(testFixtures(project(":core:brain")))
     testImplementation(testFixtures(project(":core:grounding")))

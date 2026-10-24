@@ -1,6 +1,10 @@
 package dev.lumen.core.agent
 
 import com.google.common.truth.Truth.assertThat
+import dev.lumen.core.action.ActionLedger
+import dev.lumen.core.action.ActionLedgerEntry
+import dev.lumen.core.action.LedgerSink
+import dev.lumen.core.action.fixtures.FakeLedgerSink
 import dev.lumen.core.agent.fixtures.InMemoryApprovalSignal
 import dev.lumen.core.agent.fixtures.ScriptedEnvironment
 import dev.lumen.core.brain.BrainReply
@@ -10,12 +14,16 @@ import dev.lumen.core.brain.fixtures.FakeBrain
 import dev.lumen.core.model.ApprovalState
 import dev.lumen.core.model.Goal
 import dev.lumen.core.model.ManualClock
+import dev.lumen.core.model.ReasonSource
 import dev.lumen.core.model.RunId
 import dev.lumen.core.model.UlidGenerator
 import dev.lumen.core.model.Verdict
 import dev.lumen.core.model.fixtures.InMemoryStateStore
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.PolicyEngine
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -34,12 +42,14 @@ class AgentRuntimeTest {
         store: InMemoryStateStore,
         clock: ManualClock,
         config: RunConfig = RunConfig(),
+        ledger: ActionLedger = ActionLedger(FakeLedgerSink()),
     ): AgentRuntime = AgentRuntime(
         brain = brain,
         environment = environment,
         policy = PolicyEngine(),
         approvals = ApprovalBroker(store, clock),
         store = store,
+        ledger = ledger,
         approvalSignal = InMemoryApprovalSignal(store),
         ids = UlidGenerator(clock = clock),
         config = config,
@@ -97,6 +107,100 @@ class AgentRuntimeTest {
         plan?.steps?.forEach { step ->
             assertThat(step.reason.text.trim()).isNotEmpty()
         }
+    }
+
+    @Test
+    fun `T-DSP-11 an action is recorded before it reaches the device`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(listOf(ScriptedEnvironment.screen()))
+        val dispatchedWhenRecorded = mutableListOf<Int>()
+        val sink = object : LedgerSink {
+            override suspend fun append(entry: ActionLedgerEntry) {
+                // What the device had been asked to do at the moment the entry
+                // was written: zero means the record preceded the dispatch.
+                dispatchedWhenRecorded += environment.performed.size
+            }
+
+            override suspend fun isHealthy(): Boolean = true
+        }
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = FakeBrain.planWith(FakeBrain.tapStep("tap continue", "Continue"))
+        }
+
+        runtime(brain, environment, store, clock, ledger = ActionLedger(sink)).run(goal)
+
+        assertThat(dispatchedWhenRecorded).containsExactly(0)
+    }
+
+    @Test
+    fun `the ledger records the screen the action was taken from`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(
+            listOf(ScriptedEnvironment.screen(app = "com.example.browser"), ScriptedEnvironment.screen(app = "com.example.notes")),
+        )
+        val sink = FakeLedgerSink()
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = FakeBrain.planWith(FakeBrain.tapStep("tap continue", "Continue"))
+        }
+
+        runtime(brain, environment, store, clock, ledger = ActionLedger(sink)).run(goal)
+
+        val entry = sink.entries.single()
+        // The pre-state is the screen that was in front when the step was
+        // chosen, not the one the action produced (invariant I6).
+        assertThat(entry.preState).contains("app=com.example.browser")
+        assertThat(entry.preState).doesNotContain("com.example.notes")
+        // The step's own reason travels with the action (invariant I9).
+        assertThat(entry.reason.source).isEqualTo(ReasonSource.PLANNER)
+        assertThat(entry.runId).isEqualTo(goal.id)
+    }
+
+    @Test
+    fun `an action that cannot be recorded is never dispatched`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(listOf(ScriptedEnvironment.screen()))
+        val sink = FakeLedgerSink().apply { failing = true }
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = FakeBrain.planWith(FakeBrain.tapStep("tap continue", "Continue"))
+        }
+
+        val outcome = runtime(brain, environment, store, clock, ledger = ActionLedger(sink)).run(goal)
+
+        // Fail closed: an unrecorded action is an unauditable action.
+        assertThat(outcome).isInstanceOf(RunOutcome.Failed::class.java)
+        assertThat(environment.performed).isEmpty()
+    }
+
+    @Test
+    fun `T-DSP-12 a cancellation during the ledger write cancels the run`() = runTest {
+        val store = InMemoryStateStore()
+        val clock = ManualClock(1_000L)
+        val environment = ScriptedEnvironment(listOf(ScriptedEnvironment.screen()))
+        val insideTheWrite = CompletableDeferred<Unit>()
+        val sink = object : LedgerSink {
+            override suspend fun append(entry: ActionLedgerEntry) {
+                insideTheWrite.complete(Unit)
+                awaitCancellation()
+            }
+
+            override suspend fun isHealthy(): Boolean = true
+        }
+        val brain = FakeBrain(BrainRoute.LOCAL).apply {
+            planReply = FakeBrain.planWith(FakeBrain.tapStep("tap continue", "Continue"))
+        }
+        val runtime = runtime(brain, environment, store, clock, ledger = ActionLedger(sink))
+
+        val run = launch { runtime.run(goal) }
+        insideTheWrite.await()
+        run.cancelAndJoin()
+
+        // The abort surfaces as cancellation of the run; it is not turned into
+        // a failed action, and the device was never touched.
+        assertThat(run.isCancelled).isTrue()
+        assertThat(environment.performed).isEmpty()
     }
 
     @Test
@@ -226,6 +330,7 @@ class AgentRuntimeTest {
             policy = PolicyEngine(),
             approvals = ApprovalBroker(store, clock),
             store = store,
+            ledger = ActionLedger(FakeLedgerSink()),
             approvalSignal = InMemoryApprovalSignal(store),
             ids = UlidGenerator(clock = clock),
             abort = abort,
