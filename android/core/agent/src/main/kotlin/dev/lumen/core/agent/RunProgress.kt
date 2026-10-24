@@ -8,13 +8,7 @@ package dev.lumen.core.agent
  * over is indistinguishable from a run that stopped, and `I9` says the reason
  * is part of what the user is owed while the step is going, not only after it.
  */
-public data class StepProgress(
-    val stepIndex: Int,
-    val totalSteps: Int,
-    val planVersion: Int,
-    val intent: String,
-    val reason: String,
-)
+public data class StepProgress(val stepIndex: Int, val totalSteps: Int, val planVersion: Int, val intent: String, val reason: String)
 
 /**
  * The loop's progress seam.
