@@ -18,25 +18,33 @@ import org.junit.runner.RunWith
 class LumenAccessibilityServiceTest {
 
     @Test
-    fun I01_theServiceConnectsAndReportsItsState() = runTest {
+    fun I01_theServiceConnectsAndReportsItsState() {
         val service = LumenAccessibilityService.instance
 
+        // The instance is set in `onServiceConnected`, and there is no public
+        // API for the enabled flag in settings, so the bridge's own readiness
+        // answer is the state being tested.
         assertThat(service).isNotNull()
-        assertThat(service?.let { it.isEnabled }).isTrue()
+        assertThat(service?.bridge?.isReady()).isTrue()
     }
 
     @Test
-    fun I02_aGestureLandsOnTheNodeItWasAimedAt() = runTest {
-        val service = LumenAccessibilityService.instance ?: return
-        val injector = GestureInjector(service) {
-            val metrics = service.resources.displayMetrics
-            metrics.widthPixels to metrics.heightPixels
+    fun I02_aGestureLandsOnTheNodeItWasAimedAt() {
+        val service = LumenAccessibilityService.instance
+        assertThat(service).isNotNull()
+        if (service == null) return
+
+        runTest {
+            val injector = GestureInjector(service) {
+                val metrics = service.resources.displayMetrics
+                metrics.widthPixels to metrics.heightPixels
+            }
+
+            // The middle of the screen is the middle of whatever is in front.
+            val dispatched = injector.tap(RelativePoint(0.5), RelativePoint(0.5))
+
+            assertThat(dispatched).isTrue()
         }
-
-        // The middle of the screen is the middle of whatever is in front.
-        val dispatched = injector.tap(RelativePoint(0.5), RelativePoint(0.5))
-
-        assertThat(dispatched).isTrue()
     }
 
     @Test

@@ -4,20 +4,29 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import dev.lumen.core.model.Action
 import dev.lumen.core.model.ActionPreview
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalRecord
 import dev.lumen.core.model.ApprovalState
+import dev.lumen.core.model.Assertion
+import dev.lumen.core.model.NodeRef
+import dev.lumen.core.model.Observation
+import dev.lumen.core.model.Plan
+import dev.lumen.core.model.Reason
+import dev.lumen.core.model.RelativeRect
 import dev.lumen.core.model.RiskClass
+import dev.lumen.core.model.RunId
+import dev.lumen.core.model.Step
+import dev.lumen.core.model.StepId
 import dev.lumen.core.model.StepState
-import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,7 +102,7 @@ class RoomStateStoreTest {
     fun anApprovalIsStagedAndResolved() = runTest {
         val plan = samplePlan()
         val approval = ApprovalRecord(
-            id = ApprovalId("01JBX0000000000000000000000"),
+            id = ApprovalId("01JBX000000000000000000000"),
             runId = plan.runId,
             stepId = plan.steps.first().id,
             riskClass = RiskClass.PAYMENT,
@@ -154,25 +163,69 @@ class RoomStateStoreTest {
  * Version 1 is the first schema, so there is nothing to migrate from yet.
  * The harness exists now, before the second version exists, because a
  * migration test written after the first schema change is a migration test
- * that is never written.
+ * that is never written. It checks the schema the device created, because
+ * the exported JSON is a build artefact that is not on the device.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
 
     @Test
-    fun theExportedSchemaIsCommitted() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        assertNotNull(instrumentation)
+    fun theVersionOneSchemaCreatesEveryTable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.databaseBuilder(context, LumenDatabase::class.java, "migration-probe.db")
+            .allowMainThreadQueries()
+            .build()
 
-        val schemas = File("schemas").listFiles().orEmpty()
-        assertTrue(
-            "the exported schema must be committed under the schemas directory",
-            schemas.any { it.name.contains("1.json") },
-        )
-    }
+        val tables = try {
+            val db = database.openHelper.writableDatabase
+            db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0))
+                }
+            }
+        } finally {
+            database.close()
+            context.deleteDatabase("migration-probe.db")
+        }
 
-    private companion object {
-        fun assertTrue(message: String, condition: Boolean) =
-            org.junit.Assert.assertTrue(message, condition)
+        listOf("runs", "plans", "steps", "observations", "approvals", "budget_ledger", "settings")
+            .forEach { table ->
+                assertTrue("the schema does not contain the '$table' table", tables.contains(table))
+            }
     }
 }
+
+/** A plan with one step, for the round trips above. */
+private fun samplePlan(): Plan = Plan(
+    runId = RunId("01JBX0000000000000000000001"),
+    version = 1,
+    steps = listOf(
+        Step(
+            id = StepId("01JBX0000000000000000000002"),
+            planVersion = 1,
+            phase = "research",
+            intent = "Open the results list",
+            reason = Reason.planner("the prices are only on the results page"),
+            action = Action.ClickText("Prices"),
+            expectation = Assertion.TextPresent("Total price"),
+            riskClass = RiskClass.NONE,
+        ),
+    ),
+    createdAtMs = 1_000L,
+    summary = "the scripted plan",
+)
+
+/** A one-node observation whose foreground app is [app]. */
+private fun observation(app: String): Observation = Observation(
+    app = app,
+    nodes = listOf(
+        NodeRef(
+            id = 0,
+            className = "android.widget.Button",
+            text = "Continue",
+            packageName = app,
+            bounds = RelativeRect(0.0, 0.0, 1.0, 0.1),
+            clickable = true,
+        ),
+    ),
+)
