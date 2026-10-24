@@ -181,6 +181,5 @@ public object Payloads {
     )
 
     /** The pin a run arrived with, or `AUTO` when the wire carried a word that is not one. */
-    public fun brainPin(name: String): BrainPin =
-        BrainPin.entries.firstOrNull { it.name == name.uppercase() } ?: BrainPin.AUTO
+    public fun brainPin(name: String): BrainPin = BrainPin.entries.firstOrNull { it.name == name.uppercase() } ?: BrainPin.AUTO
 }
