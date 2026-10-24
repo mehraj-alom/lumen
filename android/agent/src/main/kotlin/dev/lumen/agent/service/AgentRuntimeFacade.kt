@@ -1,5 +1,6 @@
 package dev.lumen.agent.service
 
+import android.util.Log
 import dev.lumen.agent.ipc.ApprovalPayload
 import dev.lumen.agent.ipc.BudgetPayload
 import dev.lumen.agent.ipc.GoalPayload
@@ -10,18 +11,18 @@ import dev.lumen.core.agent.ApprovalSignal
 import dev.lumen.core.agent.IndicatorState
 import dev.lumen.core.agent.RunState
 import dev.lumen.core.agent.StepEnvironment
+import dev.lumen.core.brain.BrainPort
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalState
+import dev.lumen.core.model.LumenClock
 import dev.lumen.core.model.Phase
+import dev.lumen.core.model.SystemLumenClock
+import dev.lumen.core.model.UlidGenerator
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.ApprovalDecision
 import dev.lumen.core.policy.PolicyEngine
-import dev.lumen.core.store.RoomStateStore
-import dev.lumen.core.brain.BrainPort
 import dev.lumen.core.quota.QuotaWatchdog
-import dev.lumen.core.model.UlidGenerator
-import dev.lumen.core.model.LumenClock
-import dev.lumen.core.model.SystemLumenClock
+import dev.lumen.core.store.RoomStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +45,14 @@ public class AgentRuntimeFacade(
     private val quota: QuotaWatchdog,
     private val clock: LumenClock = SystemLumenClock,
 ) {
+
+    init {
+        // The facade is the one run the service can reach, so building it is
+        // what makes it current. There is deliberately no factory function:
+        // the wiring belongs in `AgentRuntimeFactory`, and a second place to
+        // construct a facade is a second place the singleton can drift.
+        instance = this
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val ids = UlidGenerator(clock = clock)
@@ -98,18 +107,35 @@ public class AgentRuntimeFacade(
         }
     }
 
-    /** Pauses a run. */
+    /**
+     * Pauses a run.
+     *
+     * @param runId the run the console named; see [correlate]
+     */
     public fun pauseRun(runId: String, reason: String) {
+        correlate(runId, "pauseRun")
         publish(state.copy(phase = Phase.PAUSED, currentReason = reason))
     }
 
-    /** Resumes a paused run. */
+    /**
+     * Resumes a paused run.
+     *
+     * @param runId the run the console named; see [correlate]
+     */
     public fun resumeRun(runId: String) {
+        correlate(runId, "resumeRun")
         publish(state.copy(phase = Phase.RUNNING))
     }
 
-    /** Aborts a run. */
+    /**
+     * Aborts a run.
+     *
+     * The abort is never conditional on [runId]: `I12` says the user can stop
+     * the agent within one action boundary, and a stale id on the request must
+     * not be a reason to keep running.
+     */
     public fun abortRun(runId: String, reason: String) {
+        correlate(runId, "abortRun")
         abort.abort()
         publish(
             state.copy(
@@ -121,12 +147,8 @@ public class AgentRuntimeFacade(
     }
 
     /** Answers an approval. */
-    public fun answerApproval(
-        runId: String,
-        approvalId: String,
-        decision: String,
-        answerText: String?,
-    ) {
+    public fun answerApproval(runId: String, approvalId: String, decision: String, answerText: String?) {
+        correlate(runId, "answerApproval")
         val resolved = when (decision.uppercase()) {
             "APPROVE" -> ApprovalDecision.Approve
             "DENY" -> ApprovalDecision.Deny
@@ -140,11 +162,15 @@ public class AgentRuntimeFacade(
 
     /** Sets the brain pin. */
     public fun setBrainPin(runId: String, pin: String) {
+        correlate(runId, "setBrainPin")
         publish(state.copy(brainRoute = pin.uppercase()))
     }
 
     /** Takes the run over, or gives it back. */
     public fun setTakeover(runId: String, takenOver: Boolean) {
+        // The takeover is honoured whatever runId arrives: `I12` puts the user
+        // ahead of the bookkeeping.
+        correlate(runId, "setTakeover")
         takeoverActive = takenOver
         if (takenOver) {
             abort.abort()
@@ -167,6 +193,7 @@ public class AgentRuntimeFacade(
 
     /** The budget of a run. */
     public fun budget(runId: String): BudgetPayload {
+        correlate(runId, "budget")
         val snapshot = quota.budget.snapshot()
         return BudgetPayload(
             ramUsedMiB = snapshot.usedMiB,
@@ -182,6 +209,20 @@ public class AgentRuntimeFacade(
             costMicros = 0L,
             costLimitMicros = 0L,
         )
+    }
+
+    /**
+     * Notes that a control request named a run other than the live one.
+     *
+     * The facade holds a single run, and the IPC contract in `API_SPEC.md` §2
+     * is run-scoped, so every call carries a run id. The request is still
+     * honoured against the live run — refusing a stale id would mean dropping
+     * an abort, which `I12` forbids — but the mismatch is on the log with the
+     * id it arrived with, so a run can be audited after the fact.
+     */
+    private fun correlate(runId: String, request: String) {
+        if (runId == currentRunId) return
+        Log.w(TAG, "$request names run $runId, but the live run is $currentRunId")
     }
 
     private fun publish(next: RunState) {
@@ -248,34 +289,13 @@ public class AgentRuntimeFacade(
     }
 
     public companion object {
+        private const val TAG = "LumenAgentFacade"
+
         private const val APPROVAL_POLL_MS = 100L
 
-        /** The running facade, or null before the service wires one. */
+        /** The running facade, or null before one has been built. */
         @Volatile
         public var instance: AgentRuntimeFacade? = null
             private set
-
-        /** Builds the facade and publishes it. */
-        public fun create(
-            environment: StepEnvironment,
-            brain: BrainPort,
-            store: RoomStateStore,
-            approvals: ApprovalBroker,
-            policy: PolicyEngine,
-            quota: QuotaWatchdog,
-            clock: LumenClock = SystemLumenClock,
-        ): AgentRuntimeFacade {
-            val facade = AgentRuntimeFacade(
-                environment = environment,
-                brain = brain,
-                store = store,
-                approvals = approvals,
-                policy = policy,
-                quota = quota,
-                clock = clock,
-            )
-            instance = facade
-            return facade
-        }
     }
 }

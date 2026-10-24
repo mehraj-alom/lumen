@@ -31,11 +31,7 @@ public data class AgentStatePayload(
 
 /** A failure, in its wire form. */
 @Serializable
-public data class ErrorPayload(
-    val code: String,
-    val message: String,
-    val detail: Map<String, String> = emptyMap(),
-)
+public data class ErrorPayload(val code: String, val message: String, val detail: Map<String, String> = emptyMap())
 
 /** One step event, in its wire form. */
 @Serializable
@@ -92,12 +88,10 @@ public data class ApprovalPayload(
 
 /** The redacted preview of an action, in its wire form. */
 @Serializable
-public data class PreviewPayload(
-    val kind: String,
-    val label: String? = null,
-    val text: String? = null,
-    val target: String? = null,
-)
+public data class PreviewPayload(val kind: String, val label: String? = null, val text: String? = null, val target: String? = null)
+
+/** The default wall-clock ceiling of a run: 45 minutes, per `AGENTS.md` §2. */
+private const val DEFAULT_WALL_CLOCK_LIMIT_MS: Long = 45L * 60L * 1000L
 
 /** The goal a run is started from, in its wire form. */
 @Serializable
@@ -106,7 +100,7 @@ public data class GoalPayload(
     val text: String,
     val stepsSoftLimit: Int = 150,
     val stepsHardLimit: Int = 400,
-    val wallClockLimitMs: Long = 45L * 60L * 1000L,
+    val wallClockLimitMs: Long = DEFAULT_WALL_CLOCK_LIMIT_MS,
     val costLimitMicros: Long = 0L,
     val allowedPackages: Set<String> = emptySet(),
     val brainPin: String = "AUTO",
@@ -116,23 +110,22 @@ public data class GoalPayload(
 public object Payloads {
 
     /** The wire form of [state]. */
-    public fun state(state: dev.lumen.core.agent.RunState): AgentStatePayload =
-        AgentStatePayload(
-            runId = state.runId,
-            phase = state.phase.name,
-            stepIndex = state.stepIndex,
-            stepCount = state.stepCount,
-            currentIntent = state.currentIntent,
-            currentReason = state.currentReason,
-            planVersion = state.planVersion,
-            indicatorMode = state.indicatorMode.name,
-            indicatorState = state.indicatorState.name,
-            brainRoute = state.brainRoute,
-            takeoverActive = state.takeoverActive,
-            lastError = state.lastError?.let {
-                ErrorPayload(it.code.name.lowercase(), it.message)
-            },
-        )
+    public fun state(state: dev.lumen.core.agent.RunState): AgentStatePayload = AgentStatePayload(
+        runId = state.runId,
+        phase = state.phase.name,
+        stepIndex = state.stepIndex,
+        stepCount = state.stepCount,
+        currentIntent = state.currentIntent,
+        currentReason = state.currentReason,
+        planVersion = state.planVersion,
+        indicatorMode = state.indicatorMode.name,
+        indicatorState = state.indicatorState.name,
+        brainRoute = state.brainRoute,
+        takeoverActive = state.takeoverActive,
+        lastError = state.lastError?.let {
+            ErrorPayload(it.code.name.lowercase(), it.message)
+        },
+    )
 
     /** The wire form of a goal. */
     public fun goal(goal: Goal): GoalPayload = GoalPayload(

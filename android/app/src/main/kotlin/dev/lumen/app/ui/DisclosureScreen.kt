@@ -37,11 +37,7 @@ import dev.lumen.platform.overlay.GlassTokens
  * phone?*
  */
 @Composable
-public fun DisclosureScreen(
-    onEnable: () -> Unit,
-    onDecline: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+public fun DisclosureScreen(onEnable: () -> Unit, onDecline: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()

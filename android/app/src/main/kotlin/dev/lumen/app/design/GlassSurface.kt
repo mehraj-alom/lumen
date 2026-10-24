@@ -2,6 +2,7 @@ package dev.lumen.app.design
 
 import android.graphics.RuntimeShader
 import android.os.Build
+import android.util.Log
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -12,7 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -24,42 +25,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.lumen.platform.overlay.GlassTokens
 
-/** The kind of glass a surface is made of. */
-public enum class GlassSurfaceKind(
-    public val blurRadiusDp: Dp,
-    public val elevationDp: Dp,
-    public val cornerRadiusDp: Dp,
-    public val tintAlpha: Float,
-) {
-    CARD(
-        GlassTokens.BLUR_CARD_DP.dp,
-        GlassTokens.ELEVATION_CARD_DP.dp,
-        GlassTokens.RADIUS_CARD_DP.dp,
-        0.06f,
-    ),
-    PANEL(
-        GlassTokens.BLUR_PANEL_DP.dp,
-        GlassTokens.ELEVATION_PANEL_DP.dp,
-        GlassTokens.RADIUS_PANEL_DP.dp,
-        0.08f,
-    ),
-    SHEET(
-        GlassTokens.BLUR_SHEET_DP.dp,
-        GlassTokens.ELEVATION_SHEET_DP.dp,
-        GlassTokens.RADIUS_SHEET_DP.dp,
-        0.12f,
-    ),
-    INLINE(
-        GlassTokens.BLUR_INLINE_DP.dp,
-        GlassTokens.ELEVATION_INLINE_DP.dp,
-        GlassTokens.RADIUS_INLINE_DP.dp,
-        0.04f,
-    ),
-}
+private const val TAG = "LumenGlass"
 
 /**
  * A glass surface.
@@ -81,7 +50,7 @@ public fun GlassSurface(
 ) {
     val shape = RoundedCornerShape(kind.cornerRadiusDp)
 
-    var entered by remember { mutableFloatStateOf(0f) }
+    var entered by remember { mutableStateOf(false) }
     val entry by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
         animationSpec = spring(
@@ -140,17 +109,20 @@ private fun loadGlassShader(context: android.content.Context): RuntimeShader? {
                 .use { it.readText() },
         )
     } catch (error: Exception) {
+        // The tinted, un-refracted surface is the fallback below API 33, and a
+        // shader that will not compile lands on the same path: the surface
+        // loses its lens, it does not lose its glass.
+        Log.w(TAG, "the glass shader could not be compiled; drawing the fallback surface", error)
         null
     }
 }
 
 /** Draws the refraction layer. */
-private fun DrawScope.drawRefraction(
-    shader: RuntimeShader,
-    kind: GlassSurfaceKind,
-    refractionStrength: Float,
-    entry: Float,
-) {
+private fun DrawScope.drawRefraction(shader: RuntimeShader, kind: GlassSurfaceKind, refractionStrength: Float, entry: Float) {
+    // AGSL uniforms are a 33 thing. The shader is only ever built on 33+, but
+    // the platform needs to be told, and a device that lost the check gets a
+    // surface without refraction rather than a crash.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
     val density = this.density
     shader.setFloatUniform("uSize", size.width, size.height)
     shader.setFloatUniform("uCornerRadius", kind.cornerRadiusDp.toPx())
@@ -161,8 +133,12 @@ private fun DrawScope.drawRefraction(
     shader.setFloatUniform("uNoiseAmplitude", GlassTokens.NOISE_AMPLITUDE_DP * density)
     shader.setFloatUniform("uThickness", GlassTokens.SURFACE_THICKNESS_DP * density)
     shader.setFloatUniform("uRimWidth", GlassTokens.RIM_WIDTH_DP * density)
-    shader.setColorUniform("uTint", Color(GlassTokens.GLASS_TINT))
-    shader.setColorUniform("uRimColor", Color.White)
+    // The colour uniforms are half4, and the tokens are ARGB Longs; the
+    // platform setter that takes a colour wants an android.graphics.Color,
+    // so the components are written as floats.
+    val tint = Color(GlassTokens.GLASS_TINT.toInt())
+    shader.setFloatUniform("uTint", tint.red, tint.green, tint.blue, tint.alpha)
+    shader.setFloatUniform("uRimColor", 1f, 1f, 1f, 1f)
 
     drawRect(brush = ShaderBrush(shader))
 }

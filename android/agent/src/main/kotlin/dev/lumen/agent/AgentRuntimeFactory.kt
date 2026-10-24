@@ -14,8 +14,8 @@ import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.protocol.ContentEgressGuard
 import dev.lumen.core.quota.MemoryProbe
-import dev.lumen.core.quota.RamBudget
 import dev.lumen.core.quota.QuotaWatchdog
+import dev.lumen.core.quota.RamBudget
 import dev.lumen.core.sandbox.SandboxRoot
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.sandbox.WorkspaceManager
@@ -28,11 +28,11 @@ import dev.lumen.platform.idle.IdleGate
 import dev.lumen.platform.idle.PlatformScreenState
 import dev.lumen.platform.idle.TouchObserver
 import dev.lumen.platform.virtualdisplay.VirtualDisplayManager
+import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
 
 /**
  * The composition root.
@@ -41,10 +41,7 @@ import java.util.concurrent.TimeUnit
  * takes its dependencies as parameters, which is why the loop is testable
  * without a device; this is where the real ones arrive.
  */
-public class AgentRuntimeFactory(
-    private val context: Context,
-    private val clock: LumenClock = SystemLumenClock,
-) {
+public class AgentRuntimeFactory(private val context: Context, private val clock: LumenClock = SystemLumenClock) {
 
     /** The sandbox root: the app-scoped directory everything lives in. */
     public fun sandboxRoot(): SandboxRoot = SandboxRoot(
@@ -55,8 +52,7 @@ public class AgentRuntimeFactory(
     public fun storageQuota(): StorageQuota = StorageQuota()
 
     /** The only way to read or write a file. */
-    public fun workspace(root: SandboxRoot, quota: StorageQuota): WorkspaceManager =
-        WorkspaceManager(root, quota, clock)
+    public fun workspace(root: SandboxRoot, quota: StorageQuota): WorkspaceManager = WorkspaceManager(root, quota, clock)
 
     /** The encrypted state store. */
     public fun store(): RoomStateStore {
@@ -91,12 +87,10 @@ public class AgentRuntimeFactory(
             egress = egress,
         )
 
-        val local = localBrainOrNull()
-
         return BrainRouter(
-            local = local,
+            local = null,
             cloud = cloud,
-            localGate = LocalModelGate { localModelFits() },
+            localGate = LocalModelGate { LOCAL_MODEL_INSTALLED },
         )
     }
 
@@ -136,7 +130,7 @@ public class AgentRuntimeFactory(
         val bridge = AccessibilityBridgeClient(context)
         bridge.connect()
 
-        return AgentRuntimeFacade.create(
+        return AgentRuntimeFacade(
             environment = environment(bridge),
             brain = brain(egress),
             store = store,
@@ -146,28 +140,22 @@ public class AgentRuntimeFactory(
         )
     }
 
-    private fun localBrainOrNull(): dev.lumen.core.brain.BrainPort? = null
-
-    private fun localModelFits(): Boolean = false
-
     private fun platformMemoryMiB(): Int {
         val info = android.app.ActivityManager.MemoryInfo()
         val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         manager.getMemoryInfo(info)
-        return (info.totalMem - info.availMem).toInt() / (1024 * 1024)
+        // The division happens in bytes: the used figure passes 2 GiB on a
+        // modern phone, and narrowing it to Int first would wrap.
+        return ((info.totalMem - info.availMem) / BYTES_PER_MIB).toInt()
     }
 
-    private fun cloudBaseUrl(): String =
-        settings().getString("cloud_brain_url", DEFAULT_CLOUD_URL) ?: DEFAULT_CLOUD_URL
+    private fun cloudBaseUrl(): String = settings().getString("cloud_brain_url", DEFAULT_CLOUD_URL) ?: DEFAULT_CLOUD_URL
 
-    private fun cloudApiKey(): String =
-        settings().getString("cloud_brain_key", "") ?: ""
+    private fun cloudApiKey(): String = settings().getString("cloud_brain_key", "") ?: ""
 
-    private fun cloudModelId(): String =
-        settings().getString("cloud_brain_model", DEFAULT_CLOUD_MODEL) ?: DEFAULT_CLOUD_MODEL
+    private fun cloudModelId(): String = settings().getString("cloud_brain_model", DEFAULT_CLOUD_MODEL) ?: DEFAULT_CLOUD_MODEL
 
-    private fun settings(): android.content.SharedPreferences =
-        context.getSharedPreferences("lumen_settings", Context.MODE_PRIVATE)
+    private fun settings(): android.content.SharedPreferences = context.getSharedPreferences("lumen_settings", Context.MODE_PRIVATE)
 
     public companion object {
         /** The directory the sandbox lives in, inside the app's own storage. */
@@ -179,22 +167,45 @@ public class AgentRuntimeFactory(
         /** The default cloud model. The model id is pinned, so a provider-side
          *  swap cannot silently change the agent's behaviour. */
         public const val DEFAULT_CLOUD_MODEL: String = "lumen-planner-v1"
+
+        /** The memory probe reads bytes; every quota in `AGENTS.md` §2 is in MiB. */
+        private const val BYTES_PER_MIB: Int = 1024 * 1024
+
+        /**
+         * Whether a quantised local model is installed under `models/` and fits
+         * the remaining RAM budget.
+         *
+         * No local model ships with this build, so `D2` always routes to the
+         * cloud and a `LOCAL` pin has nothing to bind to. Admitting an
+         * installed model is the change that flips this flag, and it has to go
+         * through `QuotaWatchdog.reserve` first (I1) — the reserve check is the
+         * reason this is a decision rather than a lookup.
+         */
+        private const val LOCAL_MODEL_INSTALLED: Boolean = false
     }
 }
+
+/** The time allowed to reach the cloud endpoint before the call is abandoned. */
+private const val CONNECT_TIMEOUT_SECONDS: Long = 15L
+
+/**
+ * The time allowed for one completion.
+ *
+ * A planner turn streams a long reasoning trace, so a read timeout tuned for
+ * a chat reply would cut the call short mid-plan. It is also the ceiling on
+ * how long a single step can hold the run.
+ */
+private const val READ_TIMEOUT_SECONDS: Long = 120L
 
 /** The OkHttp transport the cloud brain uses. */
 public class OkHttpTransport(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build(),
 ) : HttpTransport {
 
-    override suspend fun post(
-        url: String,
-        headers: Map<String, String>,
-        body: String,
-    ): HttpResponse {
+    override suspend fun post(url: String, headers: Map<String, String>, body: String): HttpResponse {
         val request = Request.Builder()
             .url(url)
             .apply { headers.forEach { (key, value) -> header(key, value) } }

@@ -53,32 +53,24 @@ public data class ConsoleState(
 )
 
 /** One node of the plan graph. */
-public data class PlanNode(
-    val intent: String,
-    val state: String,
-    val active: Boolean = false,
-    val riskClass: String = "NONE",
-)
+public data class PlanNode(val intent: String, val state: String, val active: Boolean = false, val riskClass: String = "NONE")
 
 /** One line of the reasoning trace. */
-public data class TraceLine(
-    val text: String,
-    val kind: String = "note",
-)
+public data class TraceLine(val text: String, val kind: String = "note")
 
 /** An approval waiting for a decision. */
-public data class ApprovalCard(
-    val approvalId: String,
-    val title: String,
-    val detail: String,
-    val riskClass: String,
-)
+public data class ApprovalCard(val approvalId: String, val title: String, val detail: String, val riskClass: String)
 
 /**
  * The console.
  *
  * The console is a view. It holds no run state, it renders what the agent
  * process tells it, and every control on it is an explicit request.
+ *
+ * There is no takeover control on this screen yet: [ConsoleState.takeoverActive]
+ * arrives with the state and nothing on this view reads it, so the callback
+ * would be a parameter no control can invoke. The web console is where a
+ * takeover is requested.
  */
 @Composable
 public fun LumenConsole(
@@ -86,7 +78,6 @@ public fun LumenConsole(
     onStart: (String) -> Unit,
     onApprove: (String) -> Unit,
     onDeny: (String) -> Unit,
-    onTakeover: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goal by remember { mutableStateOf("") }
@@ -291,11 +282,7 @@ private fun Meter(label: String, used: Int, limit: Int, unit: String) {
 
 /** The approval panel. */
 @Composable
-private fun ApprovalPanel(
-    approval: ApprovalCard,
-    onApprove: (String) -> Unit,
-    onDeny: (String) -> Unit,
-) {
+private fun ApprovalPanel(approval: ApprovalCard, onApprove: (String) -> Unit, onDeny: (String) -> Unit) {
     GlassSurface(kind = GlassSurfaceKind.SHEET, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(

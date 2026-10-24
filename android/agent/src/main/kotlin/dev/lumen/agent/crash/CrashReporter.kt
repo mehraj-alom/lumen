@@ -1,5 +1,6 @@
 package dev.lumen.agent.crash
 
+import android.util.Log
 import dev.lumen.core.sandbox.SandboxPath
 import dev.lumen.core.sandbox.WorkspaceManager
 import java.io.PrintWriter
@@ -18,10 +19,7 @@ import java.io.StringWriter
  * message, and the stack trace — and the stack trace is scrubbed of the
  * things that carry screen content or file paths.
  */
-public class CrashReporter(
-    private val workspace: WorkspaceManager,
-    private val version: String = "0.1.0",
-) {
+public class CrashReporter(private val workspace: WorkspaceManager, private val version: String = "0.1.0") {
 
     /** Whether reports are written at all. */
     @Volatile
@@ -54,6 +52,10 @@ public class CrashReporter(
             workspace.write(path, report.render().toByteArray())
         } catch (error: Exception) {
             // A crash reporter that crashes is worse than no crash reporter.
+            // Only the exception's class is logged: the message of a failed
+            // write is exactly the kind of thing that carries a sandbox path,
+            // and the redaction rules above exist to keep that out of a report.
+            Log.w(TAG, "the crash report could not be written: ${error.javaClass.simpleName}")
         }
 
         return report
@@ -73,25 +75,35 @@ public class CrashReporter(
      * paths are reduced to their file names, and the message is truncated.
      */
     private fun redact(value: String): String {
-        var result = value
-        for (marker in SENSITIVE_MARKERS) {
-            result = result.replace(marker, "[redacted]")
-        }
-        result = ABSOLUTE_PATH.replace(result) { match -> match.groupValues[1] + "/" + match.groupValues[2] }
+        val fileName = ABSOLUTE_PATH.replace(value) { match -> match.value.substringAfterLast('/') }
+        val unpaired = SECRET_PAIR.replace(fileName, "[redacted]")
+        val result = BARE_MARKER.replace(unpaired, "[redacted]")
         return if (result.length > MAX_LENGTH) result.take(MAX_LENGTH) + "…" else result
     }
 
     public companion object {
+        private const val TAG = "LumenCrashReporter"
+
         /** The longest message or stack trace that is kept. */
         public const val MAX_LENGTH: Int = 4_000
 
-        /** The words that are replaced wherever they appear. */
+        /** The words that mark a value as sensitive. */
         public val SENSITIVE_MARKERS: List<String> = listOf(
             "password", "passwd", "secret", "token", "authorization", "bearer",
             "card number", "cvv", "otp", "one-time",
         )
 
-        /** An absolute path, reduced to its directory and its file name. */
-        private val ABSOLUTE_PATH = Regex("""(/[A-Za-z0-9_.\-]+)+/([A-Za-z0-9_.\-]+)""")
+        /** An absolute path; only its last component is kept. */
+        private val ABSOLUTE_PATH = Regex("""(?:/[A-Za-z0-9_.\-]+)+""")
+
+        /** A sensitive word with the value next to it: both go. */
+        private val SECRET_PAIR = Regex(
+            "(?i)\\b(" + SENSITIVE_MARKERS.joinToString("|") { Regex.escape(it) } + ")[\\s:=]+\\S+",
+        )
+
+        /** A sensitive word on its own. A file named `secret.json` is not a secret. */
+        private val BARE_MARKER = Regex(
+            "(?i)\\b(" + SENSITIVE_MARKERS.joinToString("|") { Regex.escape(it) } + ")(?![.\\w])",
+        )
     }
 }

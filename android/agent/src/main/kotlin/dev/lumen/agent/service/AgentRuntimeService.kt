@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.lumen.agent.R
 import dev.lumen.agent.ipc.IAgentFrameCallback
@@ -38,7 +39,10 @@ import kotlinx.serialization.json.Json
  */
 public class AgentRuntimeService : android.app.Service() {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val sequence = AtomicLong(0)
 
@@ -67,12 +71,7 @@ public class AgentRuntimeService : android.app.Service() {
             scope.launch { runtime?.abortRun(runId.orEmpty(), reason.orEmpty()) }
         }
 
-        override fun answerApproval(
-            runId: String?,
-            approvalId: String?,
-            decision: String?,
-            answerText: String?,
-        ) {
+        override fun answerApproval(runId: String?, approvalId: String?, decision: String?, answerText: String?) {
             scope.launch {
                 runtime?.answerApproval(
                     runId.orEmpty(),
@@ -251,10 +250,16 @@ public class AgentRuntimeService : android.app.Service() {
     private fun parseGoal(goalJson: String): dev.lumen.agent.ipc.GoalPayload? = try {
         json.decodeFromString(dev.lumen.agent.ipc.GoalPayload.serializer(), goalJson)
     } catch (error: Exception) {
+        // The console sent something that is not a goal. The run is not
+        // started, and the reason stays in the log with the payload it came
+        // from, so a malformed write is auditable.
+        Log.w(TAG, "the goal payload could not be read", error)
         null
     }
 
     public companion object {
+        private const val TAG = "LumenAgentService"
+
         private const val CHANNEL_ID = "lumen_runtime"
         private const val NOTIFICATION_ID = 0x4C55
         private const val ACTION_STOP = "dev.lumen.agent.action.STOP"
