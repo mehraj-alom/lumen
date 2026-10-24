@@ -2,7 +2,9 @@ package dev.lumen.core.sandbox
 
 import dev.lumen.core.model.LumenClock
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
 
 /** A write that would push a bucket past its budget. */
 public class StorageQuotaExceeded(public val bucket: StorageBucket, public val requestedBytes: Long, public val availableBytes: Long) :
@@ -56,7 +58,21 @@ public class WorkspaceManager(private val root: SandboxRoot, private val quota: 
      *
      * @return the number of bytes added
      */
-    public fun append(path: SandboxPath, bytes: ByteArray): Long {
+    public fun append(path: SandboxPath, bytes: ByteArray): Long = appendTo(path, bytes, durable = false)
+
+    /**
+     * Appends [bytes] to [path] and does not return until the device has them.
+     *
+     * This is the only write that survives the process being killed: the page
+     * cache is not a record, and a ledger entry that lives there is an entry
+     * that was never written. Everything the [append] contract has — the
+     * bucket admission, the eviction, the accounting — applies here too.
+     *
+     * @return the number of bytes added
+     */
+    public fun appendDurable(path: SandboxPath, bytes: ByteArray): Long = appendTo(path, bytes, durable = true)
+
+    private fun appendTo(path: SandboxPath, bytes: ByteArray, durable: Boolean): Long {
         val file = root.resolve(path)
         val bucket = root.bucketOf(path)
         val sizeBefore = if (file.isFile) file.length() else 0L
@@ -67,7 +83,15 @@ public class WorkspaceManager(private val root: SandboxRoot, private val quota: 
 
         try {
             file.parentFile?.mkdirs()
-            file.appendBytes(bytes)
+            FileOutputStream(file, true).use { stream ->
+                val channel = stream.channel
+                channel.write(ByteBuffer.wrap(bytes))
+                if (durable) {
+                    // `force(true)` takes the metadata as well as the content,
+                    // so the file exists at the size it claims after a crash.
+                    channel.force(true)
+                }
+            }
         } catch (error: IOException) {
             throw SandboxViolation(path.relative, "the file could not be appended", error)
         }
@@ -95,6 +119,14 @@ public class WorkspaceManager(private val root: SandboxRoot, private val quota: 
 
     /** Whether a file exists at [path]. */
     public fun exists(path: SandboxPath): Boolean = root.resolve(path).isFile
+
+    /**
+     * How much of [bucket]'s budget is still unclaimed.
+     *
+     * This is an accounting question, not a file operation: it reads what the
+     * quota already knows and touches nothing.
+     */
+    public fun availableBytes(bucket: StorageBucket): Long = quota.availableBytes(bucket)
 
     /** Deletes the file at [path]. */
     public fun delete(path: SandboxPath): Boolean {

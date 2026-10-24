@@ -197,6 +197,54 @@ class WorkspaceManagerTest {
     }
 
     @Test
+    fun `a durable append grows the file and is accounted`() {
+        // What `force` does cannot be observed from the JVM; what these tests
+        // cover is that the durable path keeps every other property of an
+        // append — the growth, the accounting, and the sandbox admission.
+        val path = SandboxPath.of("traces/ledger.jsonl")
+        workspace.write(path, "first\n".toByteArray())
+
+        val added = workspace.appendDurable(path, "second\n".toByteArray())
+
+        assertThat(added).isEqualTo(7L)
+        assertThat(String(workspace.read(path))).isEqualTo("first\nsecond\n")
+        assertThat(quota.usedBytes(StorageBucket.TRACES)).isEqualTo(13L)
+    }
+
+    @Test
+    fun `a durable append through a link that leaves the root is refused`() {
+        val outside = temporaryFolder.newFile("outside.jsonl")
+        File(root.root, "traces").mkdirs()
+        java.nio.file.Files.createSymbolicLink(
+            File(root.root, "traces/link.jsonl").toPath(),
+            outside.toPath(),
+        )
+
+        val failure = runCatching {
+            workspace.appendDurable(SandboxPath.of("traces/link.jsonl"), "one line\n".toByteArray())
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(SandboxViolation::class.java)
+        assertThat(outside.length()).isEqualTo(0L)
+    }
+
+    @Test
+    fun `a durable append into a bucket with no room is refused`() {
+        val noRoom = WorkspaceManager(
+            root = SandboxRoot(temporaryFolder.newFolder("no-traces")),
+            quota = StorageQuota(mapOf(StorageBucket.TRACES to 0L)),
+            clock = ManualClock(1_000L),
+        )
+
+        val failure = runCatching {
+            noRoom.appendDurable(SandboxPath.of("traces/ledger.jsonl"), "one line\n".toByteArray())
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(StorageQuotaExceeded::class.java)
+        assertThat(noRoom.exists(SandboxPath.of("traces/ledger.jsonl"))).isFalse()
+    }
+
+    @Test
     fun `an append that would escape the root is refused`() {
         val failure = runCatching {
             workspace.append(SandboxPath.of("traces/../../escape.jsonl"), ByteArray(8))
