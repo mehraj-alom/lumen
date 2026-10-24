@@ -1,30 +1,43 @@
 package dev.lumen.app.design
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.platform.overlay.GlassOverlayView
-import dev.lumen.platform.overlay.GlassTokens
 import dev.lumen.platform.overlay.IndicatorMode
 import dev.lumen.platform.overlay.IndicatorState
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The visual tests.
+ * The glass tests.
  *
- * These need a device, because they render. The shader test is skipped
- * below API 33, where AGSL does not exist.
+ * These need the app's own process, because they read an asset and build the
+ * platform's shader types. What they check is the shape of the glass — the
+ * shader parses and the surface's state moves — and not the pixels; the pixels
+ * are the golden-screenshot suite's job on a handset (`AGENTS.md` §8). The
+ * shader test is skipped below API 33, where AGSL does not exist.
  */
 @RunWith(AndroidJUnit4::class)
 class GlassShaderTest {
 
+    /**
+     * The shader compiles, and every uniform the surface sets exists in it.
+     *
+     * The pixels are not checked here, and cannot be: a canvas over a bitmap is
+     * the software pipeline, and the software pipeline refuses a `RuntimeShader`
+     * by design — on a handset exactly as much as on the CI emulator, which is
+     * what the first version of this test discovered by failing. The render
+     * claim belongs to the golden-screenshot suite on a device (`AGENTS.md` §8).
+     *
+     * What this suite does catch is the pair of failures that come before a
+     * pixel is ever drawn: a shader file that does not parse, and a uniform the
+     * surface sets that the shader never declared — a drift between this file
+     * and the asset that nothing else would notice, because a uniform bound to
+     * nothing is silent until it is on screen.
+     */
     @Test
-    fun I10_theGlassShaderCompilesAndRenders() {
+    fun I10_theGlassShaderCompiles() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
 
         val context = androidx.test.core.app.ApplicationProvider
@@ -34,27 +47,14 @@ class GlassShaderTest {
             .bufferedReader()
             .use { it.readText() }
 
-        val shader = RuntimeShader(source)
-        shader.setFloatUniform("uSize", 400f, 400f)
-        shader.setFloatUniform("uCornerRadius", 28f)
-        shader.setFloatUniform("uRefraction", 1f)
-        shader.setFloatUniform("uIor", GlassTokens.IOR)
-        shader.setFloatUniform("uFresnelPower", GlassTokens.FRESNEL_POWER)
-        shader.setFloatUniform("uNoiseScale", GlassTokens.NOISE_SCALE)
-        shader.setFloatUniform("uNoiseAmplitude", GlassTokens.NOISE_AMPLITUDE_DP)
-        shader.setFloatUniform("uThickness", GlassTokens.SURFACE_THICKNESS_DP)
-        shader.setFloatUniform("uRimWidth", GlassTokens.RIM_WIDTH_DP)
-        shader.setFloatUniform("uTime", 0f)
+        // Constructing the shader is what parses it; the call throws on a source
+        // the compiler rejects.
+        val shader = android.graphics.RuntimeShader(source)
+        assertThat(shader).isNotNull()
 
-        val bitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
-        Canvas(bitmap).drawRect(0f, 0f, 400f, 400f, Paint().apply { this.shader = shader })
-
-        // The surface must not be a flat rectangle: a shader that produced a
-        // uniform fill would be a shader that did nothing.
-        val pixels = IntArray(400 * 400)
-        bitmap.getPixels(pixels, 0, 400, 0, 0, 400, 400)
-
-        assertThat(pixels.toSet().size).isGreaterThan(10)
+        GLASS_UNIFORMS.forEach { name ->
+            assertThat(source).contains(name)
+        }
     }
 
     @Test
@@ -76,3 +76,24 @@ class GlassShaderTest {
         assertThat(view.indicatorState()).isEqualTo(IndicatorState.AWAITING_APPROVAL)
     }
 }
+
+/**
+ * Every uniform `GlassSurface` binds on the refraction shader.
+ *
+ * The list is the surface's, not the shader's: a name the shader dropped and the
+ * surface still binds is the failure worth catching, and it is silent everywhere
+ * else, because a uniform that does not exist is ignored at draw time.
+ */
+private val GLASS_UNIFORMS = listOf(
+    "uSize",
+    "uCornerRadius",
+    "uRefraction",
+    "uIor",
+    "uFresnelPower",
+    "uNoiseScale",
+    "uNoiseAmplitude",
+    "uThickness",
+    "uRimWidth",
+    "uTint",
+    "uRimColor",
+)
