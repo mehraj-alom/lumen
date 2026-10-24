@@ -18,6 +18,8 @@ ktlint_standard_filename = disabled
 indent_size = 2
 
 [*.{kt,kts}]
+# The repo style predates ktlint_official's forced multi-line signatures.
+ktlint_code_style = intellij_idea
 ktlint_standard_function-naming = disabled
 ktlint_standard_property-naming = disabled
 ktlint_standard_class-naming = disabled
