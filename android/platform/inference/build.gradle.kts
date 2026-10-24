@@ -10,6 +10,11 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+// Whether this build configures the native local brain. The default is the
+// build without it: a machine that has not vendored the llama.cpp sources can
+// still compile, lint, test and package the agent.
+val localInference = providers.gradleProperty("lumen.localInference").getOrElse("false") == "true"
+
 android {
     namespace = "dev.lumen.platform.inference"
     compileSdk = 35
@@ -36,9 +41,18 @@ android {
     }
 
     externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+        // D2 makes the local brain optional, and `LlamaNative` already carries
+        // the reason the runtime is missing when the `.so` is not in the build.
+        // Configuring CMake unconditionally made the whole build — lint, tests,
+        // the APK — depend on the llama.cpp sources being vendored first. The
+        // native build is therefore behind a property: the default build
+        // configures no native code, and `-Plumen.localInference=true` asks for
+        // it and fails loudly, from CMakeLists.txt, when the sources are absent.
+        if (localInference) {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
         }
     }
 }
