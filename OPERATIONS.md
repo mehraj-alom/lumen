@@ -13,13 +13,13 @@ How to install it, turn it on, watch it, and stop it. This is the document the u
 ./gradlew :agent:installDebug        # the runtime
 ```
 
-The two modules install one application with two processes: the console in `:ui` and the agent runtime in `:agent`. They are one app on the device.
+The two modules install one application. It runs in three processes: the default one, which hosts the console's screen; `:ui`, which hosts the accessibility service and the glass overlays it draws; and `:agent`, which hosts the runtime and is the only thing that acts on the device. They are one app on the device, and killing the screen does not stop a run.
 
 ---
 
 ## 2. Turn it on
 
-LUMEN needs three things, and it asks for them one at a time, in this order.
+LUMEN needs four things. The app asks for them in this order, and it shows you the console only after the first two are answered.
 
 ### 2.1 The accessibility service
 
@@ -27,21 +27,33 @@ LUMEN reads the screen and acts on it through the Android accessibility service.
 
 **Settings → Accessibility → LUMEN → enable.**
 
+The first screen is the disclosure: what the service sees and does, with a button that opens the right settings page and a decline that closes the app rather than running without it. Come back after switching it on; the app re-checks on every resume and moves on when it is enabled.
+
 The service is configured to read everything, report view ids, retrieve interactive windows, perform gestures, and take screenshots. The last one matters: it is how the live view works **without** a screen-capture dialog.
 
 **What the service can do, plainly:** see what is on your screen, and tap, swipe and type on it. It does this only while a task you started is running, and the indicator tells you when.
 
-### 2.2 The notification permission
+### 2.2 The model that plans
 
-LUMEN runs as a foreground service, so Android requires a persistent notification. That notification is not the visual indicator — it is the platform's rule, and it is also the one signal that always tells you the agent is running, including when the accessibility service has been revoked.
+The build carries no model of its own: no local weights ship, and the local route therefore has nothing to bind to. So the second screen asks for the three things that make a planner reachable — an endpoint that answers `POST {base}/chat/completions`, a model id, and the key that endpoint expects — plus one switch, off by default, that decides whether the agent may send screen text to it (§5).
 
-### 2.3 Battery optimisation
+The values are stored in this app's own private storage and are sent with each run to that endpoint and nowhere else. Nothing is bundled: there is no default provider, no demo key, no traffic until you name the model. A run started without a complete configuration fails with `brain_unavailable` before it touches the screen.
 
-LUMEN asks to be exempt from battery optimisation, because a forty-five minute run that the platform kills at twenty is not a run. This is optional, and the run says so when it is refused.
+### 2.3 The notification permission
+
+LUMEN runs as a foreground service, so Android requires a persistent notification. That notification is not the visual indicator — it is the platform's rule, and it is also the one signal that always tells you the agent is running, including when the accessibility service has been revoked. Its **Stop** action ends the live run.
+
+Declining the prompt hides the notification; it does not stop the runtime, and the console keeps its own stop control.
+
+### 2.4 Battery optimisation
+
+The manifest asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, and **nothing in this build asks you to grant it** — no screen or dialog requests the exemption. The consequence is that a long run on a dozing phone can be killed by the platform. To avoid that: **Settings → Apps → LUMEN → Battery → Unrestricted.** `TASK.md` M15 carries the item.
 
 ---
 
 ## 3. Pair
+
+**Not in this build.** No pairing code, token exchange or transport between the device and the web console exists in the tree yet, so the web console cannot see a run. The on-device console is the only view. `TASK.md` M15 carries the item along with the frame stream.
 
 The console pairs with the device once, and the pairing is what lets the web console see the run.
 
@@ -53,7 +65,7 @@ The device shows a pairing code. The console takes it. The token is stored in th
 
 ## 4. Run something
 
-Either on the device, in the console's first screen, or in the web console, which is the better place for a long goal because you can watch it and take over.
+On the device, in the console: the goal field at the bottom of the screen, once the accessibility service is on and a model is configured (§2). The web console is not available in this build (§3), so a long goal is watched on the phone.
 
 A goal is one sentence:
 
@@ -67,29 +79,35 @@ It stops and asks before anything irreversible. In the flight example that is th
 
 **An approval covers one action.** One grant never covers two.
 
+**Keep LUMEN in the foreground while a run can reach a gate.** The card that asks is drawn on the console screen, and the runtime has no path to raise the glass overlay card yet: background the app and a gated step simply waits, with the indicator amber, until the lease expires and the step is denied. Nothing runs without your answer either way — the waiting is the failure mode, not the safety.
+
 ---
 
 ## 5. Watch it
 
 Three ways, in increasing order of detail:
 
-1. **The screen indicator.** A glowing band along the edges, or a small pulsing dot at the top. It is on while LUMEN is working, waiting for approval, or blocked. It is off when LUMEN is idle, and you can switch it off entirely. The colours mean: cyan *working*, amber *needs you*, red *blocked*, orange *aborting*.
-2. **The on-device console.** The plan graph, the reasoning trace, the budget meters.
-3. **The web console.** All of that, plus the live screen, from another machine.
+1. **The screen indicator.** A glowing band along the edges. It is on while LUMEN is working, waiting for approval, or blocked, and it goes out when the run ends. In this build it is always the edge band: the mode setting that would switch it to the status dot or off is on a screen that is not reachable yet, so "you can switch it off entirely" is not available — revoking the accessibility service takes the window with it, and the foreground notification is what remains. The colours mean: cyan *working*, amber *needs you*, red *blocked*, orange *aborting*.
+2. **The on-device console.** The plan graph, the reasoning trace, the budget meters, and the approvals.
+3. **The web console.** All of that, plus the live screen, from another machine — not in this build; see §3.
 
 ### Spectating and privacy
 
 The live view needs screen content to leave the device, so it is **off by default** and it is a separate switch from the rest of the console. With it off, no screen content leaves the device at all — not through the web console, not through the brain, not in a trace. This is enforced at the point of sending, not by convention.
 
-**In this build the switch does not exist yet, and spectating cannot be turned on.** The runtime constructs its egress guard with spectating off, the setting never reaches the process that sends frames, and the screen where the toggle is drawn is not reachable from the console. The consequence is the safe one — nothing leaves the device — and the web console shows state, not the live screen. `TASK.md` M15 carries the item.
+**In this build the switch is on the setup screen, and it means one thing only: whether the planner may read the screen.** The console takes the consent when you configure the endpoint and sends it with every goal, and the runtime builds that run's egress guard from it — off, and screen text is denied at the point of sending; on, and the text the agent reads goes to the endpoint you typed. It is a per-run decision, not a process-wide setting, and the run is auditable against the consent it started with.
+
+What is **not** wired is the rest of the spectating path: the web console cannot be turned on from the app (`SettingsScreen` is drawn but unreachable), and no frames are streamed to it, so the live view from another machine is still a `TASK.md` M15 item. Turning this switch on sends text to your model endpoint; it does not open a video path to anyone else.
 
 ---
 
 ## 6. Take over
 
-Press **Take over** in the console, or touch the screen. Either way LUMEN stops within one action boundary — a second, at the very outside.
+**Touch the screen.** That is the takeover that works in this build: the idle gate sees you, and LUMEN stops injecting within one action boundary — a second, at the very outside — rather than competing with your finger. The run waits with "the device is in use".
 
-You then have the phone. LUMEN waits. When you press **Release**, it continues from where it was, not from the beginning.
+There is no **Take over** button yet: `setTakeover` is on the IPC and the runtime honours it, but no control on the on-device console sends it, and the web console that was meant to carry it cannot pair (§3). **Stop** is available on both the console and the notification.
+
+Once the phone is yours, LUMEN waits; resuming is the console's own control once it exists, and today a stopped run is started again rather than continued.
 
 ---
 

@@ -91,7 +91,37 @@ interface IFrameCallback {
 
 ### 2.1 Payloads
 
+**What ships.** The interface above is the contract; the AIDL in `android/agent/src/main/aidl/dev/lumen/agent/ipc/IAgentRuntime.aidl` carries the same operations with the payloads as JSON strings — `String startGoal(String goalJson)`, `String getState(String runId)`, `String getBudget(String runId)`, and `oneway void onStateChanged(String stateJson)` on `IAgentStateCallback`. The enums the sketch passes as `int` arrive as words instead: `answerApproval(runId, approvalId, decision, answerText)` takes `"APPROVE"`, `"DENY"` or `"ANSWER"`, and `setBrainPin(runId, pin)` takes `"AUTO"`, `"LOCAL"` or `"CLOUD"`. An unrecognised word is not an error at the boundary: a `brainPin` that is not one of the three parses to `AUTO`, and a decision that is not `APPROVE` or `DENY` is carried as `ANSWER` text — because a console that is older or newer than the runtime must not be able to wedge a live run. The reason for the string wire is the same one the accessibility bridge uses: the model types are already `@Serializable`, and a JSON payload keeps the interface free of a Parcelable per type that would have to be hand-kept in step with `:core:model`. Every JSON payload is the shape below, with `enum` fields sent as their `name` and unknown keys ignored on read, so an added field never breaks an older console.
+
 ```kotlin
+// StartGoalRequest — what `startGoal` carries
+data class StartGoalRequest(
+    val runId: String,
+    val text: String,
+    val stepsSoftLimit: Int = 150,
+    val stepsHardLimit: Int = 400,
+    val wallClockLimitMs: Long = 2_700_000,   // 45 min, AGENTS.md §2
+    val costLimitMicros: Long = 0,            // 0 = no cost ceiling
+    val allowedPackages: Set<String> = emptySet(),
+    val brainPin: String = "AUTO",            // AUTO | LOCAL | CLOUD
+    val brain: BrainConfig = BrainConfig(),
+)
+
+// BrainConfig — the planner one run is told to use, sent with its goal
+data class BrainConfig(
+    val baseUrl: String = "",        // any host answering POST {base}/chat/completions
+    val apiKey: String = "",         // bearer token; sent to baseUrl and nowhere else
+    val modelId: String = "",        // pinned per run so a provider swap cannot change behaviour
+    val screenTextEgress: Boolean = false,
+)
+```
+
+The brain configuration travels **with the goal** rather than being read from a settings file in the runtime process: the two processes share no cache (only the wire), a run has to be auditable against the endpoint and the consent it was started with, and the consent is the user's decision for one run, not a process-wide default. `screenTextEgress` is the `I11` answer for that run — with it off, `ContentEgressGuard` denies `SCREEN_TEXT` and a run that needs to read the screen fails at the first step rather than sending it. The key is never logged and never leaves for any other host.
+
+A run whose `BrainConfig` has no endpoint, no key or no model id does not start: the facade publishes `FAILED` with `lastError.code = brain_unavailable` and the reason the console has to be configured, instead of dispatching a step that cannot be planned.
+
+```kotlin
+
 // AgentState
 data class AgentState(
     val runId: String,
@@ -429,7 +459,7 @@ performed by `SandboxRoot.resolve`, which knows where the root is.
 | Parent traversal as a segment | `../etc/passwd`, `frames/../../etc/passwd` |
 | Absolute paths | `/etc/passwd` |
 | Home-relative paths | `~/secrets` |
-| Control characters, including NUL | `frames/a b.jpg` |
+| Control characters, including NUL | `frames/a\u0000b.jpg` |
 | Foreign filesystems | `proc/self/mem`, `sdcard/DCIM/x.jpg` |
 | Windows drive prefixes and UNC paths | `C:/Windows`, `\\server\share` |
 | A symlink that resolves outside the root | `frames/link.txt` → `/etc/passwd` |
