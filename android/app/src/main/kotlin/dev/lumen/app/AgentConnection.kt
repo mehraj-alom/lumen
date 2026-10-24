@@ -175,7 +175,15 @@ public class AgentConnection(context: Context) {
      * be auditable against the endpoint and the consent it was started with.
      */
     public fun start(text: String) {
-        val agent = runtime ?: return
+        val agent = runtime
+        if (agent == null) {
+            // A goal typed while the runtime is not bound would otherwise be
+            // swallowed by the screen the user is looking at. The bind is asked
+            // for again so the next attempt has something to talk to.
+            state = state.copy(trace = traced(TraceLine(NO_GOAL_MESSAGE, KIND_ERROR)))
+            connect()
+            return
+        }
         val proposed = ids.next()
         val payload = GoalPayload(runId = proposed, text = text, brain = settings.brain)
         val accepted = try {
@@ -200,7 +208,15 @@ public class AgentConnection(context: Context) {
 
     /** Answers an approval. The decision is the only irreversible thing here. */
     public fun decide(approvalId: String, approve: Boolean) {
-        val agent = runtime ?: return
+        val agent = runtime
+        if (agent == null) {
+            // The card stays on the screen, because an answer that never left
+            // must not look like an answer that was given: the gate times out
+            // denied, and the user has to know the difference.
+            state = state.copy(trace = traced(TraceLine(NO_ANSWER_MESSAGE, KIND_ERROR)))
+            connect()
+            return
+        }
         val decision = if (approve) "APPROVE" else "DENY"
         try {
             agent.answerApproval(runId, approvalId, decision, null)
@@ -214,7 +230,15 @@ public class AgentConnection(context: Context) {
     /** Stops the run. `I12` says the user outranks the bookkeeping, so this
      *  asks the runtime to abort whatever it is holding. */
     public fun abort() {
-        val agent = runtime ?: return
+        val agent = runtime
+        if (agent == null) {
+            // `I12` does not allow a stop button that does nothing in silence.
+            // The screen says the request did not leave, and names the control
+            // that reaches the runtime without this bind.
+            state = state.copy(trace = traced(TraceLine(NO_ABORT_MESSAGE, KIND_ERROR)))
+            connect()
+            return
+        }
         try {
             agent.abortRun(runId, "stopped from the console")
         } catch (error: Exception) {
@@ -296,6 +320,11 @@ public class AgentConnection(context: Context) {
 
         private const val PHASE_PLANNING = "PLANNING"
         private const val PHASE_WAITING = "WAITING_APPROVAL"
+
+        /** What a control says when there is no binder behind it. */
+        private const val NO_GOAL_MESSAGE = "the runtime is not connected; the goal was not sent"
+        private const val NO_ABORT_MESSAGE = "the runtime is not connected; the stop did not leave — the notification's Stop reaches it"
+        private const val NO_ANSWER_MESSAGE = "the runtime is not connected; the answer was not sent, so the gate will time out denied"
 
         private const val KIND_ERROR = "error"
         private const val KIND_GOAL = "goal"

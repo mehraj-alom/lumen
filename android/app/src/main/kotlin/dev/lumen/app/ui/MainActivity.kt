@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -71,13 +72,21 @@ class MainActivity : ComponentActivity() {
                             onSave = { connection.saveBrain(it) },
                         )
 
-                        else -> LumenConsole(
-                            state = connection.state,
-                            onStart = { connection.start(it) },
-                            onApprove = { connection.decide(it, approve = true) },
-                            onDeny = { connection.decide(it, approve = false) },
-                            onStop = { connection.abort() },
-                        )
+                        else -> {
+                            // The bind belongs to this branch rather than only to
+                            // `onResume`: the user arrives here by saving an
+                            // endpoint, not by leaving the app and coming back,
+                            // and a console that never bound to `:agent` swallows
+                            // every goal typed into it.
+                            LaunchedEffect(Unit) { connection.connect() }
+                            LumenConsole(
+                                state = connection.state,
+                                onStart = { connection.start(it) },
+                                onApprove = { connection.decide(it, approve = true) },
+                                onDeny = { connection.decide(it, approve = false) },
+                                onStop = { connection.abort() },
+                            )
+                        }
                     }
                 }
             }
@@ -129,14 +138,17 @@ class MainActivity : ComponentActivity() {
          *
          * The platform keeps the enabled services in a colon-separated secure
          * setting; there is no API that asks a service whether it is running,
-         * so the setting is the only answer available.
+         * so the setting is the only answer available. The entries are parsed as
+         * components instead of compared as text: a device may write either the
+         * short form or the qualified one, and a string compare would trap the
+         * user on the disclosure with the service already switched on.
          */
         private fun isAccessibilityEnabled(context: Context): Boolean {
-            val expected = ComponentName(context, LumenAccessibilityService::class.java).flattenToShortString()
+            val expected = ComponentName(context, LumenAccessibilityService::class.java)
             val enabled = Settings.Secure
                 .getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
                 .orEmpty()
-            return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+            return enabled.split(':').any { ComponentName.unflattenFromString(it) == expected }
         }
     }
 }
