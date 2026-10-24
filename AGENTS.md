@@ -99,14 +99,14 @@ Any change to a number below requires an ADR and a `TESTING.md` update.
 ├── TESTING.md             # quota, mock-tree, loop-recovery test specs
 ├── TASK.md                # milestone implementation checklist
 ├── RE_ANALYSIS.md         # clean-room reference analysis (Phase 1, frozen)
-├── android/               # Gradle project
+├── android/               # the Gradle project — the only buildable tree
 │   ├── app/                # console UI (Compose), process: :ui
 │   ├── agent/              # runtime, planner/actor/critic, process: :agent
 │   ├── core/               # pure-Kotlin: model, brain, policy, quota, sandbox, store
 │   ├── platform/           # accessibility, capture, virtualdisplay, idle
-│   └── console-web/        # web spectating console (D5)
-├── docs/adr/              # Architecture Decision Records
-└── tools/                 # dev scripts (bench, quota probe, tree dumper)
+│   ├── console-web/        # web spectating console (D5) — an npm project, not a Gradle module
+│   └── tools/              # adb scripts: quota-probe.sh, soak.sh, generate-modules.sh
+└── docs/adr/              # Architecture Decision Records
 ```
 
 **Module boundary rule:** `core/*` is **pure Kotlin/JVM** — no `android.*` imports, no framework types in public APIs. `platform/*` is the only place Android APIs live. This is what makes the loop testable on the JVM.
@@ -117,31 +117,39 @@ Any change to a number below requires an ADR and a `TESTING.md` update.
 
 ## 4. Build, test, lint commands
 
+**These are CI's commands, not this workstation's.** See §8: nothing is built here, and `ci.yml` runs the gate in one Gradle invocation so a run costs what it checks.
+
 ```bash
+# Every Gradle command below runs from `android/`, the Gradle root.
+
 # Build
-./gradlew :app:assembleDebug          # console + agent app
-./gradlew :agent:assembleRelease      # agent runtime
-./gradlew :console-web:build          # web spectating console
+./gradlew :app:assembleDebug          # the console APK (the only application module)
+./gradlew :agent:assembleRelease      # the agent runtime AAR (a library module)
+cd console-web && npm run build       # the web spectating console (npm, not Gradle)
 
 # Test
-./gradlew test                        # all JVM unit tests
-./gradlew :core:test :core:testDebug  # core module unit tests
-./gradlew connectedAndroidTest        # instrumentation (device required)
-./gradlew :core:quotaTest             # quota watchdog + sandbox validation
-./gradlew :core:loopRecoveryTest      # multi-step loop recovery suite
+./gradlew test                        # all JVM unit tests, every variant
+./gradlew :core:agent:test            # the loop: AgentRuntimeTest, SoakTest, HundredStepScenarioTest
+./gradlew :core:quota:test            # QuotaWatchdogTest, RamBudgetTest, the two governors, WorkerPoolTest
+./gradlew :core:sandbox:test          # path validation and bucket accounting
+./gradlew connectedDebugAndroidTest   # instrumentation (device or emulator required)
 
 # Static analysis
 ./gradlew lint                        # Android Lint, errors fail the build
 ./gradlew ktlintCheck detekt          # Kotlin style + complexity
-./gradlew :core:dependencyGuard       # fails on a banned dependency
+./gradlew dependencyGuard dependencyLedger   # the two dependency ledgers
 
-# Benchmarks
-./gradlew :core:jmh :core:benchmark   # planner latency, tree parse cost
-./gradlew :core:quotaProbe            # on-device RAM/storage report
+# Device reports (adb + a connected device; they read only)
+tools/quota-probe.sh                  # live RAM and storage against the §2 budgets
+tools/soak.sh 30                      # the 30-minute thermal and battery soak
 
-# Full gate (what CI runs)
-./gradlew lint ktlintCheck detekt test :core:dependencyGuard
+# Full gate (what CI runs, in the one invocation ci.yml uses)
+./gradlew lint ktlintCheck detekt test dependencyGuard dependencyLedger :app:assembleDebug --continue
 ```
+
+**There is no benchmark task.** `TECHSTACK.md` §9 names JMH and Macrobenchmark as the tools and the performance budgets list what they are meant to check, but no JMH or benchmark dependency is declared in the catalog or in any module and no `jmh` or `benchmark` task is registered; §4 used to list `:core:jmh`, `:core:benchmark` and `:core:quotaProbe` as commands, and asking for any of them fails the build before it checks anything. The budgets are measured on a device, when that work is scheduled.
+
+**The two guard tasks are root-project tasks** — `:dependencyGuard`, `:dependencyLedger`, registered in `android/build.gradle.kts`. `:core:dependencyGuard` is not a task; `:core` is not even a project, because `settings.gradle.kts` includes the leaf modules (`:core:model` … `:core:agent`) and no aggregate.
 
 **Dependency rule:** adding any third-party dependency requires explicit user approval *before* the dependency lands in a build file. See `TASK.md` §0.
 
@@ -215,4 +223,8 @@ A milestone in `TASK.md` is done when:
 
 **Do not write application code outside the current milestone in `TASK.md`.**
 
-**Every build gate in this repository is unverified on this machine.** The build host does not have the RAM for a Compose build and has no attached device, so the Gradle, instrumented and visual suites all run in CI. The code was verified statically instead: brace balance over every Kotlin file, every internal import resolved, every `@Serializable` property type resolvable, no unused imports, and the dependency guard re-simulated against the real tree with a negative test.
+**Nothing is built on this workstation.** The operator's standing instruction is that no Gradle task is run here — the machine is too small for a build to be safe, and a build that thrashes it is worse than no build. Every command in §4 belongs to CI, and an agent that "just wants to check" has still spent the account's minutes and the machine's headroom. Verify a change by reading it, by the module's own contract in this file, and by the CI run after it lands.
+
+What was measured here, once, before that rule was set: during the M15 ledger work the full JVM gate (`lint ktlintCheck detekt test dependencyGuard dependencyLedger`) ran green — 281 unit tests, no failures. Treat that as history, not as a workflow to repeat; the milestone status lines in `TASK.md` carry the run references.
+
+What cannot run anywhere but on a device, by construction: `connectedDebugAndroidTest`, the golden-screenshot suite, `tools/quota-probe.sh`, the thermal and battery soak, and the release build's signing path. Those are CI's `device` job or the operator's handset, and a milestone that claims one of them without a device report attached is not done.

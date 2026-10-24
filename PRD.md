@@ -229,6 +229,7 @@ Nothing is drawn. The agent still shows a persistent notification while a run is
 
 - The console shows: a live frame stream (downscaled, ~2 fps), the current step, the plan graph with the active node highlighted, the reasoning trace (the planner's own commentary, not raw prompts), the budget meters (RAM, storage, steps, time, cost), and the HITL queue.
 - **Instant takeover:** a "Take over" button pauses the agent and switches the device into manual mode. The agent does not resume until the user explicitly releases it.
+  - **Implementation status:** built for the web console, not for the device console. `AgentRuntimeFacade.setTakeover` aborts the run and holds it in `PAUSED` until `setTakeover(false)`, and `SpectateView.tsx` exposes the button; the Compose console has Approve, Deny and Start and no takeover control (`LumenConsole.kt` records this, `TASK.md` M11 keeps the item open). What the device does give is §8's passive takeover: a touch reaches `TouchObserver` through the accessibility event clock, the idle gate then refuses the live surface, and the agent stalls at the next action boundary — but it resumes on its own once the screen is idle again, which is not the semantics asked for here.
 - **Egress control:** spectating is off by default. When off, no frame, screenshot, node text, or app name leaves the device — enforced by `ContentEgressGuard`, not by UI convention.
 - **Granularity:** spectating can be set to *frames only* (see what the agent sees) or *frames + reasoning* (see what it thinks).
 

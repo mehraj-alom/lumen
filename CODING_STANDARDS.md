@@ -2,7 +2,7 @@
 
 **Status:** Draft for review · **Spec version:** 1.0 · **Codename:** LUMEN (placeholder)
 
-Enforced by `ktlint`, `detekt`, Android Lint, and the `:core:dependencyGuard` task. A rule that is not machine-checkable is marked **[manual]** and is a review duty.
+Enforced by `ktlint`, `detekt`, Android Lint, and the `:dependencyGuard` task (registered on the root project, not on a `:core` aggregate — there is no such project). A rule that is not machine-checkable is marked **[manual]** and is a review duty.
 
 ---
 

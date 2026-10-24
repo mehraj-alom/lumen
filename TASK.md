@@ -34,15 +34,15 @@ enforced by the build rather than by review.
 - [x] Create the module skeleton: `core/{model,action,grounding,policy,quota,sandbox,store,protocol,brain,agent}`, `platform/{accessibility,capture,virtualdisplay,idle,overlay}`, `agent`, `app`, `console-web`.
 - [x] Apply the module boundary rules: `core/*` gets the Kotlin JVM plugin only, **no** Android plugin. The single exception is `:core:store` (ADR 0002).
 - [x] Configure `ktlint`, `detekt`, and Android Lint with the rules in `CODING_STANDARDS.md` §10.
-- [x] Write the `:core:dependencyGuard` task: fails on a `core/*` → `android.*` / `androidx.*` / cross-module dependency, on an unapproved dependency, and on a pending one.
+- [x] Write the `:dependencyGuard` task: fails on a `core/*` → `android.*` / `androidx.*` / cross-module dependency, on an unapproved dependency, and on a pending one.
 - [x] Write the dependency-ledger check: fails when a dependency is absent from `TECHSTACK.md` §10.
 - [x] Set up the `console-web` build (Vite + TypeScript + React) with a placeholder page and a committed lockfile.
-- [x] Add the CI workflow running `lint ktlintCheck detekt test :core:dependencyGuard`.
+- [x] Add the CI workflow running `lint ktlintCheck detekt test dependencyGuard dependencyLedger`.
 - [x] Write `docs/adr/0000-template.md`, ADR 0001 (the dependency approval gate), and ADR 0002 (the `:core:store` exception).
 - [x] Commit the spec suite (this directory) as the baseline.
 
-**Gate:** `./gradlew lint ktlintCheck detekt test :core:dependencyGuard` passes on a build with no source.
-**Status:** the project files are complete and the two guard tasks were verified by simulating their logic against the real tree. **The Gradle gate has not been executed** — the build machine has insufficient RAM, so the gate runs in CI. The first CI run is the real M0 gate.
+**Gate:** `./gradlew lint ktlintCheck detekt test dependencyGuard dependencyLedger` passes on a build with no source.
+**Status:** the project files are complete and the two guard tasks were verified by simulating their logic against the real tree. **The Gradle gate has not been executed** — this workstation runs no Gradle (`AGENTS.md` §8), so the gate runs in CI. The first CI run is the real M0 gate.
 **Quota impact:** none (no runtime code).
 
 ---
@@ -62,7 +62,7 @@ enforced by the build rather than by review.
 - [x] Unit tests: serialisation round-trips, ULID monotonicity, plan equivalence ignores timestamps.
 
 **Gate:** `./gradlew :core:model:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks were run instead: brace balance over all 46 Kotlin files, every `@Serializable` property type verified serialisable, every package-local reference resolved, and the dependency guard re-simulated.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks were run instead: brace balance over all 46 Kotlin files, every `@Serializable` property type verified serialisable, every package-local reference resolved, and the dependency guard re-simulated.
 **Quota impact:** negligible — the model holds no resident state. The tree cache that uses `NodeRef` is budgeted at 192 MiB and belongs to M4.
 
 **Notes for the next milestone:**
@@ -89,7 +89,7 @@ enforced by the build rather than by review.
 - [x] Tool: `tools/quota-probe` — reports per-bucket usage.
 
 **Gate:** `./gradlew :core:sandbox:test :core:store:test` passes.
-**Status:** implemented. The test gates were **not executed** — the build machine has insufficient RAM, so they run in CI. The sandbox tests are JVM tests; the store tests are device tests, because the database is encrypted and the Keystore is not available off-device.
+**Status:** implemented. The test gates were **not executed** — this workstation runs no Gradle (`AGENTS.md` §8), so they run in CI. The sandbox tests are JVM tests; the store tests are device tests, because the database is encrypted and the Keystore is not available off-device.
 **Quota impact:** the database, its write-ahead log and its checkpoints live in the `state/` bucket, capped at 2,000 MiB. The sandbox itself adds no resident memory.
 
 **Notes for the next milestone:**
@@ -115,7 +115,7 @@ enforced by the build rather than by review.
 - [x] Tool: `tools/quota-probe` — per-category RAM report.
 
 **Gate:** `./gradlew :core:quota:quotaTest` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 55 Kotlin files, and every scenario in the suites was traced by hand against the watchdog's arithmetic.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 55 Kotlin files, and every scenario in the suites was traced by hand against the watchdog's arithmetic.
 **Quota impact:** the watchdog itself holds a budget, a map of evictables and a last-tick record — a few KiB, inside the 64 MiB `BASELINE` budget.
 
 **Notes for the next milestone:**
@@ -139,7 +139,7 @@ enforced by the build rather than by review.
 - [x] Property test: `settledTree` always returns within its cap.
 
 **Gate:** `./gradlew :core:grounding:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 76 Kotlin files, and every type referenced by `core:grounding` resolved to a declaration.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 76 Kotlin files, and every type referenced by `core:grounding` resolved to a declaration.
 **Quota impact:** the node index is budgeted at 192 MiB. A 500-node tree indexes in under 40 ms on the device, against the `AGENTS.md` §2 budget.
 
 **Notes for the next milestone:**
@@ -166,7 +166,7 @@ enforced by the build rather than by review.
 - [x] Tests: the full `T-DSP-*` set, including the ledger-failure precondition.
 
 **Gate:** `./gradlew :core:action:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 79 Kotlin files, every internal import resolved, and every package matching its directory.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 79 Kotlin files, every internal import resolved, and every package matching its directory.
 **Quota impact:** the ledger appends a few hundred bytes per action. A 400-step run writes about 100 KiB, inside the `traces/` budget.
 
 **Notes for the next milestone:**
@@ -194,8 +194,8 @@ enforced by the build rather than by review.
 - [x] Foreground-app guard and allowlist enforcement at dispatch time.
 - [x] Instrumentation: `I-01`, `I-02`, `I-03`.
 
-**Gate:** `./gradlew :platform:accessibility:test connectedAndroidTest` passes on a device.
-**Status:** implemented. The **device gate has not been executed** — this machine has no attached device and insufficient RAM, so the instrumentation suite runs in CI or on a handset with the service enabled. Static checks: brace balance over all 104 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Gate:** `./gradlew :platform:accessibility:test connectedDebugAndroidTest` passes on a device.
+**Status:** implemented. The **device gate has not been executed** — this machine has no attached device and runs no Gradle (`AGENTS.md` §8), so the instrumentation suite runs in CI or on a handset with the service enabled. Static checks: brace balance over all 104 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
 **Quota impact:** the tree cache is budgeted at 192 MiB and the service's own resident footprint is 18–30 MiB, inside the 64 MiB `BASELINE` allowance.
 
 **Notes for the next milestone:**
@@ -220,7 +220,7 @@ enforced by the build rather than by review.
 - [x] Tests: the full `L-HIT-*` set, including "the brain can only tighten, never loosen".
 
 **Gate:** `./gradlew :core:policy:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 84 Kotlin files, every internal import resolved, every `@Serializable` property type resolvable, and the dependency guard re-simulated with no violations.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 84 Kotlin files, every internal import resolved, every `@Serializable` property type resolvable, and the dependency guard re-simulated with no violations.
 **Quota impact:** an approval is one row and one notification. A 400-step run stages at most a few dozen; the pending set is bounded by the lease.
 
 **Notes for the next milestone:**
@@ -250,7 +250,7 @@ enforced by the build rather than by review.
 - [x] Tests: schema conformance, malformed-response handling, escalation, the pin precedence.
 
 **Gate:** `./gradlew :core:brain:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 93 Kotlin files, every internal import resolved, every package matching its directory, and the dependency guard re-simulated with no violations.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 93 Kotlin files, every internal import resolved, every package matching its directory, and the dependency guard re-simulated with no violations.
 **Quota impact:** the cloud path is network-bound rather than RAM-bound. The plan and the reply are budgeted inside the 96 MiB `PLANNER_MEMORY` allowance.
 
 **Notes for the next milestone:**
@@ -280,7 +280,7 @@ enforced by the build rather than by review.
 - [x] Determinism: the same seed and the same screen sequence produce an identical plan.
 
 **Gate:** `./gradlew :core:agent:loopRecoveryTest` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 99 Kotlin files, every internal import resolved, every package matching its directory, every `@Serializable` property type resolvable, and no unused imports.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 99 Kotlin files, every internal import resolved, every package matching its directory, every `@Serializable` property type resolvable, and no unused imports.
 **Quota impact:** the loop's working set is budgeted at 96 MiB and is compacted to disk under pressure. A hundred-step run holds one plan, one step and one observation at a time.
 
 **Notes for the next milestone:**
@@ -307,8 +307,8 @@ enforced by the build rather than by review.
 - [x] The persistent notification, with a stop action.
 - [x] Tests: the golden AIDL payload suite, the process-death resume test.
 
-**Gate:** `./gradlew :agent:assembleDebug connectedAndroidTest` passes.
-**Status:** implemented. The build and device gates have **not** been executed** — this machine has insufficient RAM and no attached device. Static checks: brace balance over all 123 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Gate:** `./gradlew :agent:assembleDebug connectedDebugAndroidTest` passes.
+**Status:** implemented. The build and device gates have **not been executed** — this workstation runs no Gradle (`AGENTS.md` §8) and has no attached device. Static checks: brace balance over all 123 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
 **Quota impact:** the agent process baseline is 64 MiB inside the `BASELINE` budget. The notification is the platform's requirement for a foreground service, and it is also the one signal that always tells the user the agent is running.
 
 **Notes for the next milestone:**
@@ -329,12 +329,13 @@ enforced by the build rather than by review.
 - [x] `IndicatorHost` — the overlay window, the three modes, the state machine.
 - [x] `ApprovalCard` — the overlay host for in-context HITL.
 - [x] The console screens: live frame, plan graph, reasoning trace, budget meters, settings.
-- [x] `takeover` — the instant handover.
+- [ ] `takeover` — the instant handover. **Not on the device.** The runtime honours `setTakeover` over IPC (`AgentRuntimeFacade`), the web console puts the button in the spectating view (`SpectateView.tsx`), and the Compose console has no such control — `LumenConsole.kt` records the absence in its own header. PRD §9 asks for it on the console the user is holding, and D5's on-device variant is exactly that case, so this item stays open until the console grows the control.
 - [x] Respect the "remove animations" system setting.
 - [x] Tests: `I-10`, `I-11`, and the golden screenshot suite.
 
-**Gate:** `./gradlew :app:assembleDebug :app:connectedAndroidTest` passes.
-**Status:** implemented. The **build and device gates have not been executed** — this machine has insufficient RAM for a Compose build and no attached device. Static checks: brace balance over all 116 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Gate:** `./gradlew :app:assembleDebug :app:connectedDebugAndroidTest` passes.
+**Status:** implemented. The **build and device gates have not been executed here** — this workstation runs no Gradle (`AGENTS.md` §8) and has no attached device. `:app:assembleDebug` has since been built once during the M15 work, so the Compose half of the gate is no longer an assumption; `connectedDebugAndroidTest` and the golden screenshots still are. Static checks at the time: brace balance over all 116 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Reopened at M15:** the takeover item above was found unchecked while the invariant surface was being re-read, so by §7's definition M11 is not done — the milestone is otherwise complete and the missing piece is one control on one screen.
 **Quota impact:** the console renderer holds its surface buffers inside the `:ui` process, and the overlay adds a full-screen transparent window. Both are inside the 24 MiB the renderer is allowed.
 
 **Notes for the next milestone:**
@@ -347,7 +348,7 @@ enforced by the build rather than by review.
 **Spec corrections made with the code:**
 - `STYLE_GUIDE.md` §3.2 now records that the shader is self-contained and that the blur-behind is a fallback below API 33.
 
-**Gate:** `./gradlew :app:test connectedAndroidTest` passes; the golden screenshots match.
+**Gate:** `./gradlew :app:test connectedDebugAndroidTest` passes; the golden screenshots match.
 **Quota impact:** the console is in the `:ui` process; the renderer holds ≤ 24 MiB of surface buffers.
 
 ---
@@ -364,7 +365,7 @@ enforced by the build rather than by review.
 - [x] Tests: `I-06`, `I-07`, and `L-REC-11` (the user-touch pause within 1 s).
 
 **Gate:** `./gradlew :platform:idle:test :platform:virtualdisplay:test` passes.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. Static checks: brace balance over all 110 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. Static checks: brace balance over all 110 Kotlin files, every internal import resolved, no unused imports, and the dependency guard re-simulated with no violations.
 **Quota impact:** a private display costs 30–80 MiB of graphics memory depending on its resolution, and it is released when the run ends. It is not opened while the agent is idle-waiting.
 
 **Notes for the next milestone:**
@@ -376,7 +377,7 @@ enforced by the build rather than by review.
 **Spec corrections made with the code:**
 - `ARCH.md` §4.4 now states the surface-selection order explicitly, and names the idle-gate conditions in full.
 
-**Gate:** `./gradlew :platform:idle:test :platform:virtualdisplay:test connectedAndroidTest` passes.
+**Gate:** `./gradlew :platform:idle:test :platform:virtualdisplay:test connectedDebugAndroidTest` passes.
 **Quota impact:** a virtual display costs ≈ 30–80 MiB depending on resolution; it is released when the run ends.
 
 ---
@@ -391,8 +392,8 @@ enforced by the build rather than by review.
 - [x] The egress guard on the frame path.
 - [x] Tests: the egress-guard suite, and the frame-drop accounting.
 
-**Gate:** `./gradlew :console-web:build` and the device instrumentation pass.
-**Status:** implemented. The web build and the device gates have **not** been executed** — insufficient RAM and no attached device. Static checks: the TypeScript and Kotlin are brace-balanced, every internal import resolves, and the dependency guard is clean.
+**Gate:** `cd console-web && npm run build` and the device instrumentation pass.
+**Status:** implemented. The web build and the device gates have **not been executed** — this workstation runs no Gradle and no npm build (`AGENTS.md` §8), and there is no attached device. CI's `Web console` job has run the `npm ci`, build and lint pair green (runs 20 and 21). Static checks: the TypeScript and Kotlin are brace-balanced, every internal import resolves, and the dependency guard is clean.
 **Quota impact:** the frame buffer is budgeted at 128 MiB and frames are **dropped, not queued**, when it is full. The dropped count is reported to the console.
 
 **Notes for the next milestone:**
@@ -412,7 +413,7 @@ enforced by the build rather than by review.
 - [x] The router precedence, the admission refusal, and the unload-and-escalate path.
 
 **Gate:** `./gradlew :core:brain:test` passes in both flavours.
-**Status:** implemented. The test gate was **not executed** — the build machine has insufficient RAM, so it runs in CI. The native build additionally needs the llama.cpp sources vendored under `platform/inference/src/main/cpp/llama.cpp`; the build fails with a clear message when they are absent, rather than quietly building without the local brain.
+**Status:** implemented. The test gate was **not executed** — this workstation runs no Gradle at all (`AGENTS.md` §8), so it runs in CI. The native build additionally needs the llama.cpp sources vendored under `platform/inference/src/main/cpp/llama.cpp`; the build fails with a clear message when they are absent, rather than quietly building without the local brain.
 **Quota impact:** the resident model is capped at 1,400 MiB by the `BRAIN_MODEL` budget. The default build ships no native code and no model weights, and the agent is fully functional without them.
 
 **Notes for the next milestone:**
@@ -432,11 +433,15 @@ enforced by the build rather than by review.
 - [x] The release checklist: `RELEASE.md` — the gates, the native flavour, the disclosure, the privacy claims, the version rename.
 - [x] The settings screen: the indicator mode, the brain pin, spectating, crash reporting, the idle window.
 - [x] `tools/soak.sh` — the 30-minute thermal and battery soak, and its report.
-- [ ] The release build itself: `lint ktlintCheck detekt test :core:dependencyGuard` plus the connected suite, run on CI and on a device.
+- [ ] The release build itself: `lint ktlintCheck detekt test dependencyGuard dependencyLedger` plus the connected suite, run on CI and on a device.
 - [ ] The 30-minute thermal soak, run on a device.
 
 **Gate:** every gate in `AGENTS.md` §7 passes.
-**Status:** the code is complete. The **release gates have not been executed** — this machine has insufficient RAM for a build and no attached device, so the whole verification story is CI's job. What is left is to *run* the gates: the CI workflow, the device suite, the thermal soak and the release build.
+**Status:** the code is complete and the static half of the gate has been executed: `lint ktlintCheck detekt test dependencyGuard dependencyLedger` on the ledger work — BUILD SUCCESSFUL, 281 unit tests, no failures. That run is the exception, not the workflow: `AGENTS.md` §8 puts every build on CI, and **CI cannot run at all right now.** Its jobs never start — run 22 (`295d9b3`, the twelve-commit hardening batch) failed in three seconds with no step executed, and the annotation on every job reads "The job was not started because recent account payments have failed or your spending limit needs to be increased." That is an account action, not a code action, and no push will produce a verdict until Billing & plans is fixed.
+
+The last runs that did execute (20 and 21) failed inside the `Lint` step on `:agent:compileDebugKotlin` — `AgentRuntimeService.kt` passing `RunState` where `AgentStatePayload` was expected and omitting `stepCount`. Those are the compile errors the batch that landed as `295d9b3` fixes, so run 22 was the first chance CI had to see the corrected tree, and it never got to start. `Specification consistency` and `Web console` were green in both.
+
+What is left, in order: fix the account's billing so a run can start; read run 23 for the gate verdict on `295d9b3` and the ledger work; then the two items that need hardware — the connected suite on the emulator (the `device` job is newly wired and has never executed) and the 30-minute thermal and battery soak on a handset. `ci.yml` now caps every job with `timeout-minutes` and runs the gate in one Gradle invocation, because a hung emulator is how a monthly minute budget disappears.
 **Quota impact:** the steady-state footprint is documented in the release notes.
 
 **Notes for the next milestone:**

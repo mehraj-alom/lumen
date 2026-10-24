@@ -9,21 +9,23 @@ The checklist for a release. Every item is a command, a file, or a check that a 
 ## 1. The gates
 
 ```bash
-# Everything CI runs
-./gradlew lint ktlintCheck detekt test :core:dependencyGuard
+# Everything CI runs, in the one invocation ci.yml uses (from `android/`)
+./gradlew lint ktlintCheck detekt test dependencyGuard dependencyLedger :app:assembleDebug --continue
 
 # The pure-JVM suites that carry the loop, the quota engine and the policy
-./gradlew :core:model:test :core:quota:quotaTest :core:policy:test \
-          :core:agent:loopRecoveryTest :core:sandbox:test :core:grounding:test \
+./gradlew :core:model:test :core:quota:test :core:policy:test \
+          :core:agent:test :core:sandbox:test :core:grounding:test \
           :core:brain:test :core:action:test
 
 # The device suites. The accessibility service must be enabled.
-./gradlew connectedAndroidTest
+./gradlew connectedDebugAndroidTest
 
 # The builds
 ./gradlew :app:assembleRelease :agent:assembleRelease
-./gradlew :console-web:build
+cd console-web && npm ci && npm run build && npm run lint
 ```
+
+Every task name above is registered: the two dependency guards live on the root project (`:dependencyGuard`, `:dependencyLedger`), the test tasks are per-module (`:core:quota:test` — `:core:quota:quotaTest` and `:core:agent:loopRecoveryTest` are suite *titles* in `TESTING.md`, not tasks), and the web console is an npm project with no Gradle task at all.
 
 **A release is not a release until the device suite has run on a physical device with the accessibility service enabled.** The instrumentation tests for the accessibility service, the overlay, the shader and the indicator all need it.
 

@@ -10,10 +10,10 @@
 |---|---|---|---|
 | **Pure unit** | Logic, given inputs | JVM | `./gradlew test` |
 | **Property** | Invariants over generated inputs | JVM | `./gradlew test` |
-| **Golden** | Contract shapes and visuals | JVM + device | `./gradlew test` + `connectedAndroidTest` |
-| **Integration** | The loop, end to end, against fakes | JVM | `./gradlew :core:loopRecoveryTest` |
-| **Instrumentation** | The real accessibility service, real overlays | Device | `./gradlew connectedAndroidTest` |
-| **Quota probe** | Real RAM and storage footprints | Device | `./gradlew :core:quotaProbe` |
+| **Golden** | Contract shapes and visuals | JVM + device | `./gradlew test` + `connectedDebugAndroidTest` |
+| **Integration** | The loop, end to end, against fakes | JVM | `./gradlew :core:agent:test` |
+| **Instrumentation** | The real accessibility service, real overlays | Device | `./gradlew connectedDebugAndroidTest` |
+| **Quota probe** | Real RAM and storage footprints | Device | `android/tools/quota-probe.sh` (adb; it is not a Gradle task) |
 | **Soak** | A 100-step run under real time | Device | manual, pre-release |
 
 **Principles:**
@@ -55,7 +55,7 @@
 
 ---
 
-## 3. Quota watchdog suite — `:core:quotaTest`
+## 3. Quota watchdog suite — `:core:quota:test`
 
 ### 3.1 RAM
 
@@ -148,7 +148,7 @@ The detector watches two independent signals: the **event clock** and the **shap
 
 ---
 
-## 5. Agent loop recovery suite — `:core:loopRecoveryTest`
+## 5. Agent loop recovery suite — `:core:agent:test`
 
 ### 5.1 The 100-step scenario
 

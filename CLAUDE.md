@@ -46,8 +46,10 @@ If you only read one file, read `AGENTS.md`. If you read two, read `AGENTS.md` a
 ## Before you ship
 
 ```
-./gradlew lint ktlintCheck detekt test :core:dependencyGuard
+./gradlew lint ktlintCheck detekt test dependencyGuard dependencyLedger
 ```
+
+That is the gate, and **it is CI's command, not this workstation's** — `AGENTS.md` §8: nothing is built here, the machine is too small to build on safely and the operator has ruled out local builds. Read the code against the contract instead, and take the verdict from the CI run after the change lands.
 
 Plus, from `AGENTS.md` §6.3: a unit test in the owning module, a sandbox-path test for every new I/O path, a cancellation test for every new loop, and a tested Room migration for every new state field. State the quota impact of the change.
 
@@ -57,4 +59,4 @@ Plain, specific, no marketing adjectives. No "simply", "just", "obviously", "sea
 
 ## Current state
 
-Phase 3 (spec suite) in progress. **No application code until the user approves the Phase 3 documents.**
+Phase 3 is complete and approved; Phase 4 is on M15 (hardening and release). The per-milestone **Status** lines in `TASK.md` are the record of what was actually verified, and M15's says what is blocking it now: CI's jobs are not starting, because the account's Actions spending limit needs attention in Billing & plans. Until a run can start, no change here has a gate verdict.

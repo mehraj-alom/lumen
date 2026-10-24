@@ -97,7 +97,7 @@ app/             Android app module — process :ui
   web/           console-web (separate build, static SPA)
 ```
 
-**Boundary rule (enforced by `:core:dependencyGuard`):** `core/*` may not reference `android.*`, `platform/*`, or `agent/*`. `platform/*` may not reference `agent/*`. `app/*` may not reference `agent/*` internals — it goes through AIDL.
+**Boundary rule (enforced by `:dependencyGuard`, the root-project task):** `core/*` may not reference `android.*`, `platform/*`, or `agent/*`. `platform/*` may not reference `agent/*`. `app/*` may not reference `agent/*` internals — it goes through AIDL.
 
 **One named exception (ADR 0002):** `:core:store` is an Android library, because Room is an Android-only artifact. The persistence *port* (`StateStore`) and every DTO live in `:core:model`, which stays pure, so `:core:agent` — the loop — remains a plain JVM module with a fake store, and `:core:agent:test` needs no Robolectric. `:core:store` may depend on `androidx.room`, `androidx.datastore` and `androidx.sqlite` and nothing else outside `core/`.
 
