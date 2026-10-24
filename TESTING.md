@@ -22,6 +22,10 @@
 2. No real network. No real clock. No `Thread.sleep`. No real filesystem outside a per-test temp dir.
 3. Every test names the invariant it defends. If a test cannot be summarised in one sentence, it is testing nothing.
 4. Quota tests assert **exact numbers**, never ranges. A budget that drifts by 1 MiB is a regression.
+5. An instrumented test states what it needs and skips when the device does not have it. The accessibility suite assumes a non-null `LumenAccessibilityService.instance`, because nothing except a user in Settings makes that true: a CI emulator that has never had the switch thrown reports *skipped*, which is the truth, rather than a failure that checked nothing or a pass that never happened.
+6. An instrumented method name carries no spaces. DEX allows a space in a method name only from version 040 (API 33) up and this tree builds for API 26, so a spaced name — the easy thing to write in a backtick Kotlin test — fails `dexBuilderDebugAndroidTest` before the suite runs. Spaced names belong to the JVM suites, which dex nothing.
+7. A test that can never pass where it is claimed to pass is a broken test, not a failing device. A `Canvas` over a `Bitmap` is the software pipeline on every handset, and the software pipeline refuses a `RuntimeShader`, so the glass suite checks that the AGSL parses and that every uniform `GlassSurface` binds is declared in the asset; the pixel claim belongs to the golden-screenshot suite, which renders through a window on a device.
+8. A connected suite that starts zero tests has not passed. A library module has no default `testInstrumentationRunner`, and with none declared AGP writes no `<instrumentation>` element into the merged androidTest manifest, so `connectedDebugAndroidTest` installs the APK, runs nothing and reports success. Every module with an `androidTest` source set declares `androidx.test.runner.AndroidJUnitRunner`, and a device-suite report is read for its test *count* before it is read for its colour.
 
 ---
 

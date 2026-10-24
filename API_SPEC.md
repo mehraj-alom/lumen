@@ -212,6 +212,8 @@ data class FrameChunk(
 
 Event types: `run.started`, `run.plan_created`, `run.plan_revised`, `step.started`, `step.observed`, `step.completed`, `step.failed`, `step.denied`, `approval.requested`, `approval.resolved`, `brain.route_changed`, `budget.warning`, `budget.exhausted`, `run.paused`, `run.resumed`, `run.completed`, `run.failed`, `run.aborted`, `trace.note`.
 
+**What ships.** The build emits one event per published state, and its `type` is `state.` plus the phase in lower case — `state.planning`, `state.running`, `state.waiting_approval`, `state.done`, `state.failed`, `state.aborted` — with `seq`, `tsMs`, the current `intent` and the current `reason`, beside a whole-state `onStateChanged` payload. `stepIndex`, `stepCount` and `planVersion` in that payload move, because the loop names every step it chooses before it dispatches it (`RunProgress`, `:core:agent`), and an approval gate moves the phase to `waiting_approval` and back. `stepId`, `riskClass`, `app` and `durationMs` are on the payload type and stay absent: the loop has no per-step result seam to fill them, and inventing a value for a field the web console renders is worse than leaving it out. The rest of the vocabulary above is the contract for the web console (`TASK.md` M15), not this build's output.
+
 ---
 
 ## 3. Brain tool schema

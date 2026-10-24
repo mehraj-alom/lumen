@@ -71,7 +71,7 @@ A goal is one sentence:
 
 > *find the cheapest direct flight to Lisbon next Tuesday under €400 and add it to my notes app*
 
-LUMEN plans it, shows you the plan, and runs it. The plan is about a hundred steps across seven phases, and it is a DAG — the planner can revise it mid-flight when the world disagrees.
+LUMEN plans it, tells you which step it is on and why, and runs it. The plan is about a hundred steps across seven phases, and it is a DAG — the planner can revise it mid-flight when the world disagrees.
 
 ### What it will ask you about
 
@@ -88,7 +88,7 @@ It stops and asks before anything irreversible. In the flight example that is th
 Three ways, in increasing order of detail:
 
 1. **The screen indicator.** A glowing band along the edges. It is on while LUMEN is working, waiting for approval, or blocked, and it goes out when the run ends. In this build it is always the edge band: the mode setting that would switch it to the status dot or off is on a screen that is not reachable yet, so "you can switch it off entirely" is not available — revoking the accessibility service takes the window with it, and the foreground notification is what remains. The colours mean: cyan *working*, amber *needs you*, red *blocked*, orange *aborting*.
-2. **The on-device console.** The plan graph, the reasoning trace, the budget meters, and the approvals.
+2. **The on-device console.** The step counter, the intent of the step the agent is on, the reason the planner gave for it, the reasoning trace, the budget meters, and the approvals. Each step the loop chooses is published before it acts, so a run that has gone quiet on step 31 of 80 is a run you can see thinking, not a run you have to guess about. What this build does not show is the plan graph: the state stream carries a position in the plan and a plan version, not the plan's shape, and drawing the graph is an open `TASK.md` M15 item.
 3. **The web console.** All of that, plus the live screen, from another machine — not in this build; see §3.
 
 ### Spectating and privacy
