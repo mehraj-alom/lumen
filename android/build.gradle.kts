@@ -183,9 +183,16 @@ val dependencyGuard by tasks.registering {
     group = "verification"
     description = "Enforces the core module boundary and the dependency approval ledger."
 
-    // The task reads the build files at execution time, so it cannot be
-    // serialised into the configuration cache. The rest of the build keeps it.
-    notCompatibleWithConfigurationCache("Reads the build files at execution time.")
+    // The action below calls a top-level function of this script, so the
+    // compiled closure keeps a `this$0` field pointing at the script instance,
+    // and Gradle refuses to serialize a reference to a script object — that is
+    // what the configuration-cache report shows for this task
+    // (`Field "this$0" of Build_gradle$dependencyGuard$2$1`), not the file I/O.
+    // Reading build files at execution time would be fine on its own. The rest
+    // of the build keeps the task: the entry is discarded instead of failing.
+    // Fixing it properly means moving the scan out of the script (buildSrc or
+    // a convention plugin), which is a build-layout change, not a comment.
+    notCompatibleWithConfigurationCache("The action calls a function of this build script.")
 
     val projectDir = rootDir
     val approved = rootProject.file("gradle/approved-dependencies.txt")
@@ -272,7 +279,7 @@ val dependencyLedger by tasks.registering {
     group = "verification"
     description = "Checks that every declared dependency is documented in the TECHSTACK.md ledger."
 
-    notCompatibleWithConfigurationCache("Reads the build files at execution time.")
+    notCompatibleWithConfigurationCache("The action calls a function of this build script.")
 
     val projectDir = rootDir
     val specLedger = rootProject.file("../TECHSTACK.md")
