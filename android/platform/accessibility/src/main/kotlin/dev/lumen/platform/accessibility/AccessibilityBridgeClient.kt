@@ -8,10 +8,10 @@ import android.os.IBinder
 import android.util.Log
 import dev.lumen.core.model.Action
 import dev.lumen.core.model.Observation
-import kotlin.coroutines.resume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -32,6 +32,9 @@ public class AccessibilityBridgeClient(private val context: Context) {
     }
     private val connectedState = MutableStateFlow(false)
 
+    // The binder is set on the main thread by the service connection and read by
+    // the run's workers, so the write has to be visible there.
+    @Volatile
     private var binder: IAccessibilityBridge? = null
     private var connection: ServiceConnection? = null
 
@@ -50,14 +53,24 @@ public class AccessibilityBridgeClient(private val context: Context) {
         }
     }
 
-    /** Binds to the service. */
+    /**
+     * Binds to the bridge.
+     *
+     * The target is `AccessibilityBridgeService`, never the accessibility
+     * service itself: that component is guarded by
+     * `BIND_ACCESSIBILITY_SERVICE`, a signature permission only the system
+     * holds, so binding to it from this process is a permission denial that
+     * reaches the caller as a `SecurityException` and takes the runtime process
+     * down before a run exists. The bridge service has no such guard, is not
+     * exported, and hands out the same binder.
+     */
     public fun connect() {
         if (connection != null) return
         connection = serviceConnection
-        val intent = Intent(context, LumenAccessibilityService::class.java)
+        val intent = Intent(context, AccessibilityBridgeService::class.java)
         val bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         if (!bound) {
-            Log.w(TAG, "the accessibility service could not be bound")
+            Log.w(TAG, "the accessibility bridge could not be bound")
             connection = null
         }
     }
@@ -100,17 +113,47 @@ public class AccessibilityBridgeClient(private val context: Context) {
     /** Opens an application. */
     public suspend fun openApp(packageName: String): Boolean = awaitBridge()?.openApp(packageName) ?: false
 
-    /** Waits for the binding, or gives up. */
-    private suspend fun awaitBridge(): IAccessibilityBridge? {
-        if (binder != null) return binder
-        return suspendCancellableCoroutine { continuation ->
-            val listener = object : android.os.Handler(android.os.Looper.getMainLooper()) {
-                override fun handleMessage(message: android.os.Message) {
-                    continuation.resume(binder)
-                }
-            }
-            listener.sendEmptyMessageDelayed(0, BIND_TIMEOUT_MS)
+    /**
+     * Tells the overlay what the run is doing.
+     *
+     * Best effort, and it never waits for the binding: the indicator is a
+     * signal about a step, not a step itself, and a state change must not be
+     * held up — or reordered — behind a binder that may never arrive. With no
+     * binding there is no window to light, which is the same outcome as the
+     * accessibility service having been revoked.
+     */
+    public fun showIndicator(state: String, mode: String) {
+        val bridge = binder ?: return
+        try {
+            bridge.setIndicator(state, mode)
+        } catch (error: Exception) {
+            Log.w(TAG, "the indicator could not be told to show $state in $mode", error)
         }
+    }
+
+    /** Takes the indicator off: a run that is over leaves nothing lit. */
+    public fun hideIndicator() {
+        val bridge = binder ?: return
+        try {
+            bridge.hideIndicator()
+        } catch (error: Exception) {
+            Log.w(TAG, "the indicator could not be told to hide", error)
+        }
+    }
+
+    /**
+     * Waits for the binding, or gives up.
+     *
+     * The bridge only exists while the user has the accessibility service
+     * switched on, so a bind can legitimately never complete. The wait is
+     * bounded and cancellable: a run that is being aborted must not stay
+     * suspended because a binder is missing, and nothing here may hold the main
+     * thread.
+     */
+    private suspend fun awaitBridge(): IAccessibilityBridge? {
+        binder?.let { return it }
+        withTimeoutOrNull(BIND_TIMEOUT_MS) { connectedState.first { connected -> connected } }
+        return binder
     }
 
     public companion object {
