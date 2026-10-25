@@ -197,11 +197,11 @@ class MigrationTest {
 
 /** A plan with one step, for the round trips above. */
 private fun samplePlan(): Plan = Plan(
-    runId = RunId("01JBX0000000000000000000001"),
+    runId = RunId("01JBX000000000000000000001"),
     version = 1,
     steps = listOf(
         Step(
-            id = StepId("01JBX0000000000000000000002"),
+            id = StepId("01JBX000000000000000000002"),
             planVersion = 1,
             phase = "research",
             intent = "Open the results list",
