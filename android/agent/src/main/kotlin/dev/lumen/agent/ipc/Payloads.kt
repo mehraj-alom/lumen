@@ -85,6 +85,17 @@ public data class ApprovalPayload(
     val actionPreview: PreviewPayload,
     val expiresAtMs: Long,
     val leaseSeconds: Int,
+    /**
+     * Whether the gate is still open.
+     *
+     * `API_SPEC.md` §2 names two approval messages, `approval.requested` and
+     * `approval.resolved`, and the AIDL carries one. The state is the difference
+     * between them: a card the console is told about as `PENDING` is answered,
+     * and the same id arriving as anything else is the runtime saying the gate
+     * closed without an answer — so the screen can drop a control that no longer
+     * refers to a live step instead of leaving it there to be tapped.
+     */
+    val state: String = "PENDING",
 )
 
 /** The redacted preview of an action, in its wire form. */

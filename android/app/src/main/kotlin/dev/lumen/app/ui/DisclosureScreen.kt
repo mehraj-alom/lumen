@@ -35,9 +35,14 @@ import dev.lumen.platform.overlay.GlassTokens
  * The screen is not a legal document. It is a short, honest answer to the
  * question a user actually has: *what is this thing going to do to my
  * phone?*
+ *
+ * It is read once. [onContinue] means "I have read this", not "I agree to
+ * nothing": the service is still off, the console says so on every visit, and
+ * the only thing the user may do without it is look. Closing the app over an
+ * unread page would be a wall, not a consent screen.
  */
 @Composable
-public fun DisclosureScreen(onEnable: () -> Unit, onDecline: () -> Unit, modifier: Modifier = Modifier) {
+public fun DisclosureScreen(onEnable: () -> Unit, onContinue: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -84,12 +89,20 @@ public fun DisclosureScreen(onEnable: () -> Unit, onDecline: () -> Unit, modifie
             }
         }
 
+        Text(
+            text = "Without the service switched on the agent cannot see the screen or act on " +
+                "it, so a run stops at its first step. Everything else in the app still works.",
+            color = Color(GlassTokens.TEXT_TERTIARY),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+        )
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onEnable) {
                 Text("Open settings")
             }
-            OutlinedButton(onClick = onDecline) {
-                Text("Not now")
+            OutlinedButton(onClick = onContinue) {
+                Text("Continue without it")
             }
         }
     }

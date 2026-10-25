@@ -91,7 +91,7 @@ interface IFrameCallback {
 
 ### 2.1 Payloads
 
-**What ships.** The interface above is the contract; the AIDL in `android/agent/src/main/aidl/dev/lumen/agent/ipc/IAgentRuntime.aidl` carries the same operations with the payloads as JSON strings — `String startGoal(String goalJson)`, `String getState(String runId)`, `String getBudget(String runId)`, and `oneway void onStateChanged(String stateJson)` on `IAgentStateCallback`. The enums the sketch passes as `int` arrive as words instead: `answerApproval(runId, approvalId, decision, answerText)` takes `"APPROVE"`, `"DENY"` or `"ANSWER"`, and `setBrainPin(runId, pin)` takes `"AUTO"`, `"LOCAL"` or `"CLOUD"`. An unrecognised word is not an error at the boundary: a `brainPin` that is not one of the three parses to `AUTO`, and a decision that is not `APPROVE` or `DENY` is carried as `ANSWER` text — because a console that is older or newer than the runtime must not be able to wedge a live run. The reason for the string wire is the same one the accessibility bridge uses: the model types are already `@Serializable`, and a JSON payload keeps the interface free of a Parcelable per type that would have to be hand-kept in step with `:core:model`. Every JSON payload is the shape below, with `enum` fields sent as their `name` and unknown keys ignored on read, so an added field never breaks an older console.
+**What ships.** The interface above is the contract; the AIDL in `android/agent/src/main/aidl/dev/lumen/agent/ipc/IAgentRuntime.aidl` carries the same operations with the payloads as JSON strings — `String startGoal(String goalJson)`, `String getState(String runId)`, `String getBudget(String runId)`, and `oneway void onStateChanged(String stateJson)` on `IAgentStateCallback`. The enums the sketch passes as `int` arrive as words instead: `answerApproval(runId, approvalId, decision, answerText)` takes `"APPROVE"`, `"DENY"` or `"ANSWER"`, and `setBrainPin(runId, pin)` takes `"AUTO"`, `"LOCAL"` or `"CLOUD"`. An unrecognised word is not an error at the boundary: a `brainPin` that is not one of the three parses to `AUTO`, and a decision that is not `APPROVE` or `DENY` is carried as `ANSWER` text — because a console that is older or newer than the runtime must not be able to wedge a live run. The reason for the string wire is the same one the accessibility bridge uses: the model types are already `@Serializable`, and a JSON payload keeps the interface free of a Parcelable per type that would have to be hand-kept in step with `:core:model`. Every JSON payload is the shape below, with `enum` fields sent as their `name` and unknown keys ignored on read, so an added field never breaks an older console. The two approval messages of the sketch — `approval.requested` and `approval.resolved` — are one AIDL message carrying a `state`: `PENDING` is the gate opening, and any other value on the same `approvalId` is the runtime saying the gate closed without this viewer's answer, which is what lets a console drop a card it can no longer act on.
 
 ```kotlin
 // StartGoalRequest — what `startGoal` carries
@@ -163,7 +163,8 @@ data class ApprovalRequest(
     val consequences: List<String>,// irreversible effects, spelled out
     val actionPreview: ActionPreview,
     val expiresAtMs: Long,
-    val leaseSeconds: Int
+    val leaseSeconds: Int,
+    val state: String              // PENDING | APPROVED | DENIED | EXPIRED
 )
 
 // ActionPreview — a redacted, human-readable projection of the action

@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -77,6 +79,11 @@ private val TERMINAL_PHASES: Set<String> = setOf("DONE", "FAILED", "ABORTED")
  * The console is a view. It holds no run state, it renders what the agent
  * process tells it, and every control on it is an explicit request.
  *
+ * The order of the screen is the order of what the user comes to do: the status,
+ * then the control that acts, then the reasoning. The column scrolls, so a
+ * control is never cut off by a short screen or by the keyboard — a goal field
+ * the user cannot reach is a goal field that does not exist.
+ *
  * [onStop] is the in-app half of `I12`: the run is abortable from the screen
  * the user is looking at, and the runtime notification carries the same stop.
  * There is no takeover control here yet: [ConsoleState.takeoverActive] arrives
@@ -93,57 +100,103 @@ public fun LumenConsole(
     modifier: Modifier = Modifier,
 ) {
     var goal by remember { mutableStateOf("") }
+    val awaitingGoal = state.phase == "IDLE" || state.phase in TERMINAL_PHASES
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(GlassTokens.ABYSS)),
+            .background(Color(GlassTokens.ABYSS))
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        Header(state)
+
+        if (awaitingGoal) {
+            GoalControl(goal = goal, onGoalChange = { goal = it }, onStart = { onStart(goal.trim()) })
+        } else {
+            RunningControl(state = state, onStop = onStop)
+        }
+
+        state.approvals.forEach { approval ->
+            ApprovalPanel(approval, onApprove, onDeny)
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            PlanPanel(state.plan, Modifier.weight(1f))
+            TracePanel(state.trace, Modifier.weight(1f))
+        }
+
+        BudgetPanel(state)
+    }
+}
+
+/**
+ * The goal field.
+ *
+ * The Start button answers to the text beside it and to nothing else: a goal
+ * that is blank cannot be sent, and the control says so rather than starting an
+ * empty run.
+ */
+@Composable
+private fun GoalControl(goal: String, onGoalChange: (String) -> Unit, onStart: () -> Unit) {
+    GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Header(state)
-
-            if (state.approvals.isNotEmpty()) {
-                state.approvals.forEach { approval ->
-                    ApprovalPanel(approval, onApprove, onDeny)
-                }
+            androidx.compose.material3.OutlinedTextField(
+                value = goal,
+                onValueChange = onGoalChange,
+                label = { Text("What should the agent do?") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+            )
+            Spacer(Modifier.width(12.dp))
+            androidx.compose.material3.Button(
+                onClick = onStart,
+                enabled = goal.isNotBlank(),
+            ) {
+                Text("Start")
             }
+        }
+    }
+}
 
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                PlanPanel(state.plan, Modifier.weight(1f))
-                TracePanel(state.trace, Modifier.weight(1f))
+/**
+ * What the console says when the accessibility service is off.
+ *
+ * The run cannot see or touch the screen without it, and the setting is the only
+ * place the console process can find out. So the notice names what is missing,
+ * what it stops the agent from doing, and the way to change it — and leaves the
+ * rest of the screen usable.
+ */
+@Composable
+public fun GroundingNotice(onEnable: () -> Unit, modifier: Modifier = Modifier) {
+    GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Accessibility is off",
+                    color = Color(GlassTokens.TEXT_PRIMARY),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "LUMEN cannot see or touch the screen until the service is switched " +
+                        "on, so a run stops at its first step.",
+                    color = Color(GlassTokens.TEXT_SECONDARY),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
             }
-
-            BudgetPanel(state)
-
-            if (state.phase == "IDLE" || state.phase in TERMINAL_PHASES) {
-                GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        androidx.compose.material3.OutlinedTextField(
-                            value = goal,
-                            onValueChange = { goal = it },
-                            label = { Text("What should the agent do?") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        androidx.compose.material3.Button(
-                            onClick = { onStart(goal) },
-                            enabled = goal.isNotBlank(),
-                        ) {
-                            Text("Start")
-                        }
-                    }
-                }
-            } else {
-                RunningControl(state = state, onStop = onStop)
+            androidx.compose.material3.Button(onClick = onEnable) {
+                Text("Open")
             }
         }
     }

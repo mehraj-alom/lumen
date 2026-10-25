@@ -129,6 +129,17 @@ public class AgentRuntimeService : android.app.Service() {
         override fun registerStateCallback(callback: IAgentStateCallback?) {
             if (callback == null) return
             synchronized(callbackLock) { stateCallbacks += callback }
+            // A listener that registers in the middle of a run is a console the
+            // user has just come back to. Everything the run published while it
+            // was away is gone, and the one thing on the screen that cannot be
+            // reconstructed later is the gate the loop is blocked on: a push
+            // nobody received is an approval that ends denied. So the state and
+            // the open gates go out again, to the listener that just arrived.
+            val facade = runtime ?: return
+            scope.launch {
+                publishState(facade.state(facade.liveRunId))
+                facade.republishOpenGates()
+            }
         }
 
         override fun unregisterStateCallback(callback: IAgentStateCallback?) {

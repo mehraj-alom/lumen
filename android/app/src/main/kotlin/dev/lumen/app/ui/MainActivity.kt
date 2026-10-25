@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,15 +28,18 @@ import dev.lumen.platform.accessibility.LumenAccessibilityService
 /**
  * The console's single activity.
  *
- * The activity is a host and nothing more. It shows one of three screens — the
- * disclosure until the accessibility service is on, the brain setup until an
- * endpoint is configured, then the console — and it owns the connection to the
- * runtime process. No run state lives here: every figure on the console arrives
- * from `:agent` over the IPC in `API_SPEC.md` §2, and every control on it is a
- * request back through the same channel.
+ * The activity is a host and nothing more. It shows the disclosure until it has
+ * been read, the brain setup until an endpoint is configured, then the console —
+ * and it owns the connection to the runtime process. No run state lives here:
+ * every figure on the console arrives from `:agent` over the IPC in
+ * `API_SPEC.md` §2, and every control on it is a request back through the same
+ * channel.
  *
  * The accessibility check runs on every resume, because the user answers the
- * disclosure in another app and comes back with the switch either on or off.
+ * disclosure in another app and comes back with the switch either on or off. It
+ * decides what the console warns about, not whether the console exists: a
+ * permission the user believes they granted must never be a reason the app has
+ * no screen they can use.
  */
 class MainActivity : ComponentActivity() {
 
@@ -43,6 +47,9 @@ class MainActivity : ComponentActivity() {
 
     /** Whether the accessibility service is switched on. Read during composition. */
     private var grounded by mutableStateOf(false)
+
+    /** Whether the disclosure has been read. Written once, and persisted. */
+    private var acknowledged by mutableStateOf(false)
 
     private val askForNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) {
@@ -58,13 +65,14 @@ class MainActivity : ComponentActivity() {
         val connection = AgentConnection(application)
         agent = connection
         grounded = isAccessibilityEnabled(this)
+        acknowledged = connection.settings.disclosureAcknowledged
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when {
-                        !grounded -> DisclosureScreen(
+                        !grounded && !acknowledged -> DisclosureScreen(
                             onEnable = { openAccessibilitySettings() },
-                            onDecline = { finishAffinity() },
+                            onContinue = { acknowledgeDisclosure(connection) },
                         )
 
                         !connection.isConfigured -> BrainSetupScreen(
@@ -79,13 +87,25 @@ class MainActivity : ComponentActivity() {
                             // and a console that never bound to `:agent` swallows
                             // every goal typed into it.
                             LaunchedEffect(Unit) { connection.connect() }
-                            LumenConsole(
-                                state = connection.state,
-                                onStart = { connection.start(it) },
-                                onApprove = { connection.decide(it, approve = true) },
-                                onDeny = { connection.decide(it, approve = false) },
-                                onStop = { connection.abort() },
-                            )
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // The service being off is a fact about the device
+                                // the user can still change, and the way to change
+                                // it is one tap from the screen they are on. It is
+                                // not a reason to hide the console: an app that
+                                // answers a granted permission with a page of
+                                // instructions is an app that cannot be used.
+                                if (!grounded) {
+                                    GroundingNotice(onEnable = { openAccessibilitySettings() })
+                                }
+                                LumenConsole(
+                                    state = connection.state,
+                                    onStart = { connection.start(it) },
+                                    onApprove = { connection.decide(it, approve = true) },
+                                    onDeny = { connection.decide(it, approve = false) },
+                                    onStop = { connection.abort() },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }
@@ -111,6 +131,12 @@ class MainActivity : ComponentActivity() {
         // `:agent`; the platform kills `:ui` before it touches `:agent`.
         agent?.disconnect()
         super.onPause()
+    }
+
+    /** Records that the disclosure was read, and moves on to the app. */
+    private fun acknowledgeDisclosure(connection: AgentConnection) {
+        connection.settings.disclosureAcknowledged = true
+        acknowledged = true
     }
 
     private fun openAccessibilitySettings() {

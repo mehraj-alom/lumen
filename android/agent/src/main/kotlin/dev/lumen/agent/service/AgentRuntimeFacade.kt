@@ -25,6 +25,7 @@ import dev.lumen.core.model.Goal
 import dev.lumen.core.model.GoalConstraints
 import dev.lumen.core.model.LumenClock
 import dev.lumen.core.model.Phase
+import dev.lumen.core.model.RunId
 import dev.lumen.core.model.SystemLumenClock
 import dev.lumen.core.model.UlidGenerator
 import dev.lumen.core.policy.ApprovalBroker
@@ -311,6 +312,15 @@ public class AgentRuntimeFacade(
                 currentReason = reason,
             ),
         )
+        // A run stopped while it waits on a gate would otherwise sit at the gate
+        // until the lease runs out, with the stop button pressed and nothing
+        // happening. The open gates are closed here, denied, so the loop is at
+        // an action boundary again within one poll (`I12`, and `I4`: closing a
+        // gate with no answer is a denial, never an approval).
+        val run = currentRunId
+        if (run.isNotEmpty()) {
+            scope.launch { approvals.expireOpen(RunId(run)) }
+        }
     }
 
     /** Answers an approval. */
@@ -323,7 +333,12 @@ public class AgentRuntimeFacade(
         }
         scope.launch {
             approvals.resolve(ApprovalId(approvalId), resolved)
-            publish(state.copy(phase = Phase.RUNNING, indicatorState = IndicatorState.WORKING))
+            // The run only looks alive again if it was alive at all. An answer
+            // that arrived after a stop is not a reason to put a dead run back
+            // in the *working* phase.
+            if (!abort.isAborted && !state.phase.isTerminal) {
+                publish(state.copy(phase = Phase.RUNNING, indicatorState = IndicatorState.WORKING))
+            }
         }
     }
 
@@ -460,9 +475,28 @@ public class AgentRuntimeFacade(
      */
     private suspend fun awaitApproval(approvalId: dev.lumen.core.model.ApprovalId): ApprovalState {
         publish(state.copy(phase = Phase.WAITING_APPROVAL, indicatorState = IndicatorState.AWAITING_APPROVAL))
+        // The card has to reach the console while the gate is *open*. A record
+        // published only when it resolves leaves the screen with nothing to
+        // answer, and `I4`'s deny-by-default then denies a step the user would
+        // have approved, in silence, because they were never asked.
+        store.loadApproval(approvalId)?.let { publishApproval(it) }
         val decision = awaitDecision(approvalId)
-        publish(state.copy(phase = Phase.RUNNING, indicatorState = IndicatorState.WORKING))
+        if (!abort.isAborted && !state.phase.isTerminal) {
+            publish(state.copy(phase = Phase.RUNNING, indicatorState = IndicatorState.WORKING))
+        }
         return decision
+    }
+
+    /**
+     * Tells a viewer about every gate the live run is still waiting on.
+     *
+     * The console binds when the user opens it, which can be in the middle of a
+     * run. A push that went out while nobody was listening is gone, and a gate
+     * nobody can see is a gate that ends denied.
+     */
+    public suspend fun republishOpenGates() {
+        if (currentRunId.isEmpty()) return
+        approvals.pending(RunId(currentRunId)).forEach { publishApproval(it) }
     }
 
     private suspend fun awaitDecision(approvalId: dev.lumen.core.model.ApprovalId): ApprovalState {
@@ -496,6 +530,7 @@ public class AgentRuntimeFacade(
                 ),
                 expiresAtMs = record.leaseExpiresAtMs,
                 leaseSeconds = ((record.leaseExpiresAtMs - record.createdAtMs) / 1000L).toInt(),
+                state = record.state.name,
             ),
         )
     }

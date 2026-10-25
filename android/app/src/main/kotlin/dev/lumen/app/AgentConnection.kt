@@ -277,6 +277,12 @@ public class AgentConnection(context: Context) {
             currentReason = payload.currentReason.orEmpty(),
             brainRoute = payload.brainRoute,
             takeoverActive = payload.takeoverActive,
+            // The approvals are not cleared here. A phase that is no longer
+            // *waiting* does not mean the gate was answered: a stop publishes
+            // `ABORTED` while the loop still holds the gate open, and a card
+            // deleted at that moment takes away the only control that could
+            // answer it. A card is removed when the runtime says the gate
+            // closed, which is the same message with a state on it.
         )
         refreshBudget()
     }
@@ -289,6 +295,15 @@ public class AgentConnection(context: Context) {
 
     private fun applyApproval(wire: String?) {
         val approval = decode(ApprovalPayload.serializer(), wire) ?: return
+        if (approval.state != STATE_PENDING) {
+            // The gate closed without this screen answering it — approved or
+            // denied on another surface, or stopped, or the lease ran out. The
+            // control goes with it: a card for a step the runtime has moved past
+            // is a button that does nothing, and a dead button on a screen that
+            // is supposed to be answerable is worse than no button.
+            state = state.copy(approvals = state.approvals.filterNot { it.approvalId == approval.approvalId })
+            return
+        }
         if (state.approvals.any { it.approvalId == approval.approvalId }) return
         state = state.copy(
             phase = PHASE_WAITING,
@@ -320,6 +335,9 @@ public class AgentConnection(context: Context) {
 
         private const val PHASE_PLANNING = "PLANNING"
         private const val PHASE_WAITING = "WAITING_APPROVAL"
+
+        /** The one approval state that means the gate is still open. */
+        private const val STATE_PENDING = "PENDING"
 
         /** What a control says when there is no binder behind it. */
         private const val NO_GOAL_MESSAGE = "the runtime is not connected; the goal was not sent"

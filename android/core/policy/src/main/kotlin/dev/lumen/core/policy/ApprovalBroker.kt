@@ -122,4 +122,26 @@ public class ApprovalBroker(
         }
         return expired
     }
+
+    /**
+     * Closes every open gate of [runId] without an answer.
+     *
+     * A run that has been stopped is not waiting for anyone, and `I12` says the
+     * stop takes effect at the action boundary the gate *is* — not one lease
+     * later. The outcome is the one a lease expiry already produces: no answer
+     * arrived, so the step is denied (`I4`). Nothing is remembered as approved
+     * that the user never approved.
+     *
+     * @return the identifiers that were closed
+     */
+    public suspend fun expireOpen(runId: RunId): List<ApprovalId> {
+        val now = clock.nowMs()
+        val closed = mutableListOf<ApprovalId>()
+
+        for (record in store.loadPendingApprovals(runId)) {
+            store.saveApproval(record.copy(state = ApprovalState.EXPIRED, resolvedAtMs = now))
+            closed += record.id
+        }
+        return closed
+    }
 }
