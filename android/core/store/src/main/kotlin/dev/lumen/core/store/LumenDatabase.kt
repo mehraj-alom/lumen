@@ -57,6 +57,7 @@ public abstract class LumenDatabase : RoomDatabase() {
          * by a Keystore key.
          */
         public fun open(context: Context, keyProvider: DatabaseKeyProvider): LumenDatabase {
+            SqlCipher.ensureLoaded()
             val passphrase = keyProvider.passphrase()
             // The passphrase is cleared once the database is opened.
             val factory = SupportOpenHelperFactory(passphrase, null, true)
@@ -67,6 +68,45 @@ public abstract class LumenDatabase : RoomDatabase() {
                 .build()
         }
     }
+}
+
+/**
+ * The SQLCipher native library.
+ *
+ * `net.zetetic:sqlcipher-android` registers its JNI methods when the library is
+ * loaded and loads nothing itself, so without this call the first attempt to
+ * *open* the encrypted database dies inside `SQLiteConnection.nativeOpen` with
+ * an `UnsatisfiedLinkError` that names nothing but a private method signature.
+ * That is what the store's own device suite reported the first time it ever
+ * ran: the encryption at rest this module promises had never been exercised,
+ * because nothing had ever reached the native layer.
+ *
+ * There is no unencrypted fallback here, deliberately: the database holds the
+ * observation store, and a build whose ABI lacks the library says so at open
+ * time rather than writing screen content in the clear.
+ */
+internal object SqlCipher {
+
+    @Volatile
+    private var loaded = false
+
+    /** Loads `libsqlcipher.so`, once per process. */
+    @Synchronized
+    fun ensureLoaded() {
+        if (loaded) return
+        try {
+            System.loadLibrary(LIBRARY_NAME)
+            loaded = true
+        } catch (error: UnsatisfiedLinkError) {
+            throw IllegalStateException(
+                "the SQLCipher native library '$LIBRARY_NAME' is not available on this device: " +
+                    "the encrypted state store cannot be opened, and there is no unencrypted fallback",
+                error,
+            )
+        }
+    }
+
+    private const val LIBRARY_NAME = "sqlcipher"
 }
 
 /**
@@ -157,4 +197,7 @@ public class DatabaseKeyProvider(private val context: Context) {
 }
 
 /** The SQLCipher open helper factory, exposed for tests. */
-public fun sqlCipherFactory(passphrase: ByteArray): SupportSQLiteOpenHelper.Factory = SupportOpenHelperFactory(passphrase, null, true)
+public fun sqlCipherFactory(passphrase: ByteArray): SupportSQLiteOpenHelper.Factory {
+    SqlCipher.ensureLoaded()
+    return SupportOpenHelperFactory(passphrase, null, true)
+}

@@ -27,7 +27,7 @@ LUMEN reads the screen and acts on it through the Android accessibility service.
 
 **Settings → Accessibility → LUMEN → enable.**
 
-The first screen is the disclosure: what the service sees and does, with a button that opens the right settings page and a decline that closes the app rather than running without it. Come back after switching it on; the app re-checks on every resume and moves on when it is enabled.
+The first screen is the disclosure: what the service sees and does, with a button that opens the right settings page and a second that says *I have read this, and I will switch it on later*. The page is shown once — the acknowledgement is stored — and it is not a gate on the app: a user who leaves the service off reaches the console, which carries a notice naming what is missing, what it stops the agent from doing, and the one tap that changes it. The service state is re-checked on every resume, so the notice disappears by itself when the switch is thrown, and a run started without it stops at its first step rather than pretending to work.
 
 The service is configured to read everything, report view ids, retrieve interactive windows, perform gestures, and take screenshots. The last one matters: it is how the live view works **without** a screen-capture dialog.
 
