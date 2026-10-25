@@ -281,6 +281,7 @@ class PolicyEngineTest {
 class ApprovalBrokerTest {
 
     private val runId = RunId("01JBX000000000000000000001")
+    private val otherRunId = RunId("01JBX0000000000000000000009")
     private val stepId = StepId("01JBX000000000000000000002")
     private lateinit var store: InMemoryStateStore
     private lateinit var clock: ManualClock
@@ -293,7 +294,7 @@ class ApprovalBrokerTest {
         broker = ApprovalBroker(store, clock, leaseMs = 60_000L)
     }
 
-    private fun request() = ApprovalRequest(
+    private fun request(runId: RunId = this.runId) = ApprovalRequest(
         runId = runId,
         approvalId = ApprovalId("00000000000000000000000000"),
         stepId = stepId,
@@ -388,5 +389,48 @@ class ApprovalBrokerTest {
 
         assertThat(first).isNotEqualTo(second)
         assertThat(store.approvals).hasSize(2)
+    }
+
+    @Test
+    fun `a stop closes every open gate of the run denied`() = runTest {
+        val first = broker.stage(request())
+        val second = broker.stage(request())
+
+        val closed = broker.expireOpen(runId)
+
+        assertThat(closed).containsExactly(first, second)
+        assertThat(store.approvals[first]?.state).isEqualTo(ApprovalState.EXPIRED)
+        assertThat(store.approvals[second]?.state).isEqualTo(ApprovalState.EXPIRED)
+        assertThat(broker.pending(runId)).isEmpty()
+    }
+
+    @Test
+    fun `a gate closed by the stop answers to nothing`() = runTest {
+        // The stop is not an approver, and a card the console had not yet
+        // dropped must not be able to run the step afterwards.
+        val approvalId = broker.stage(request())
+
+        broker.expireOpen(runId)
+
+        assertThat(broker.resolve(approvalId, ApprovalDecision.Approve)).isFalse()
+        assertThat(store.approvals[approvalId]?.state).isEqualTo(ApprovalState.EXPIRED)
+    }
+
+    @Test
+    fun `a stop leaves the answer a gate already has`() = runTest {
+        val approvalId = broker.stage(request())
+        broker.resolve(approvalId, ApprovalDecision.Approve)
+
+        assertThat(broker.expireOpen(runId)).isEmpty()
+        assertThat(store.approvals[approvalId]?.state).isEqualTo(ApprovalState.APPROVED)
+    }
+
+    @Test
+    fun `a stop closes only the gates of the run it stopped`() = runTest {
+        val mine = broker.stage(request())
+        val theirs = broker.stage(request(otherRunId))
+
+        assertThat(broker.expireOpen(runId)).containsExactly(mine)
+        assertThat(store.approvals[theirs]?.state).isEqualTo(ApprovalState.PENDING)
     }
 }
