@@ -281,7 +281,7 @@ class PolicyEngineTest {
 class ApprovalBrokerTest {
 
     private val runId = RunId("01JBX000000000000000000001")
-    private val otherRunId = RunId("01JBX0000000000000000000009")
+    private val otherRunId = RunId("01JBX000000000000000000009")
     private val stepId = StepId("01JBX000000000000000000002")
     private lateinit var store: InMemoryStateStore
     private lateinit var clock: ManualClock

@@ -74,28 +74,7 @@ public fun DisclosureScreen(onEnable: () -> Unit, onContinue: () -> Unit, modifi
             }
         }
 
-        GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Heading("You are always in control")
-                Text(
-                    text = "The agent shows an indicator whenever it is working. You can take " +
-                        "over at any moment by touching the screen, and it pauses within a " +
-                        "second. You can turn the service off in Android settings at any " +
-                        "time, and it stops immediately.",
-                    color = Color(GlassTokens.TEXT_SECONDARY),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                )
-            }
-        }
-
-        Text(
-            text = "Without the service switched on the agent cannot see the screen or act on " +
-                "it, so a run stops at its first step. Everything else in the app still works.",
-            color = Color(GlassTokens.TEXT_TERTIARY),
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-        )
+        ControlSection()
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onEnable) {
@@ -106,6 +85,37 @@ public fun DisclosureScreen(onEnable: () -> Unit, onContinue: () -> Unit, modifi
             }
         }
     }
+}
+
+/**
+ * What the user keeps once the service is off: the promise that the agent is
+ * always stoppable, and the plain statement of what the missing permission
+ * costs a run.
+ */
+@Composable
+private fun ControlSection() {
+    GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Heading("You are always in control")
+            Text(
+                text = "The agent shows an indicator whenever it is working. You can take " +
+                    "over at any moment by touching the screen, and it pauses within a " +
+                    "second. You can turn the service off in Android settings at any " +
+                    "time, and it stops immediately.",
+                color = Color(GlassTokens.TEXT_SECONDARY),
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+            )
+        }
+    }
+
+    Text(
+        text = "Without the service switched on the agent cannot see the screen or act on " +
+            "it, so a run stops at its first step. Everything else in the app still works.",
+        color = Color(GlassTokens.TEXT_TERTIARY),
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+    )
 }
 
 /** A heading inside the disclosure. */
