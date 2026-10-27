@@ -392,9 +392,9 @@ public class AgentConnection(context: Context) {
         val text = buildString {
             event.type?.let { append(it) }
             event.stepId?.let { append(" step=$it") }
-            event.riskClass?.let { append(" risk=${it}") }
+            event.riskClass?.let { append(" risk=$it") }
             event.app?.let { append(" app=$it") }
-            event.durationMs?.let { append(" ${it}ms") }
+            event.durationMs?.let { append(" $it ms") }
             append(": ")
             append(event.reason ?: event.intent ?: event.text ?: "")
         }

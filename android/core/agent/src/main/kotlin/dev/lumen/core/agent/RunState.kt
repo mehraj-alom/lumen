@@ -2,7 +2,6 @@ package dev.lumen.core.agent
 
 import dev.lumen.core.model.ApiError
 import dev.lumen.core.model.Phase
-import dev.lumen.core.model.RiskClass
 
 /**
  * The observable state of a run.

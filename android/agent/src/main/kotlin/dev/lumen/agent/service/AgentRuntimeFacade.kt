@@ -21,7 +21,6 @@ import dev.lumen.core.agent.StepProgress
 import dev.lumen.core.agent.toIndicatorMode
 import dev.lumen.core.brain.BrainConfig
 import dev.lumen.core.brain.BrainFactory
-import dev.lumen.core.brain.BrainReply
 import dev.lumen.core.brain.PriceTable
 import dev.lumen.core.model.ApiError
 import dev.lumen.core.model.ApprovalId
@@ -40,10 +39,10 @@ import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.quota.BatteryDecision
 import dev.lumen.core.quota.BatteryGovernor
 import dev.lumen.core.quota.BatteryProbe
-import dev.lumen.core.quota.GovernorDecision
 import dev.lumen.core.quota.QuotaWatchdog
 import dev.lumen.core.quota.ThermalGovernor
 import dev.lumen.core.quota.ThermalProbe
+import dev.lumen.core.quota.ThermalStatus
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
@@ -152,20 +151,7 @@ public class AgentRuntimeFacade(
      * reason, rather than starting and dying on the first step.
      */
     public fun startGoal(payload: GoalPayload) {
-        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
-        if (liveBefore && payload.runId != currentRunId) {
-            // One run at a time. Starting a second run would reset the abort
-            // signal the first one is still reading, which is how a stopped run
-            // comes back and acts, so the request is refused rather than queued.
-            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
-            publish(
-                state.copy(
-                    currentReason = ONE_RUN_MESSAGE,
-                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
-                ),
-            )
-            return
-        }
+        if (!refuseSecondRun(payload)) return
 
         currentRunId = payload.runId
         takeoverActive = false
@@ -174,44 +160,19 @@ public class AgentRuntimeFacade(
         runCostMicros = 0L
         val goal = Payloads.goal(payload)
         val config = Payloads.brainConfig(payload)
-        publish(
-            RunState(
-                runId = payload.runId,
-                phase = Phase.PLANNING,
-                currentIntent = goal.text,
-                indicatorState = IndicatorState.WORKING,
-                indicatorMode = preferredIndicatorMode,
-                brainRoute = goal.constraints.brainPin.name,
-            ),
-        )
+        publishPlanningState(goal)
 
         if (!config.isUsable) {
-            publish(
-                state.copy(
-                    phase = Phase.FAILED,
-                    indicatorState = IndicatorState.ERROR,
-                    currentReason = NO_BRAIN_MESSAGE,
-                    lastError = ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = NO_BRAIN_MESSAGE),
-                ),
-            )
+            publishBrainUnavailable()
             return
         }
 
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
-            publish(
-                state.copy(
-                    phase = Phase.FAILED,
-                    indicatorState = IndicatorState.ERROR,
-                    currentReason = battery.reason,
-                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = battery.reason),
-                ),
-            )
+            publishBatterySuspended(battery.reason)
             return
         }
 
-        // A run that was stopped leaves its abort flag behind, and the next run
-        // would end before its first step without this.
         abort.reset()
 
         scope.launch {
@@ -235,6 +196,56 @@ public class AgentRuntimeFacade(
         }
     }
 
+    private fun refuseSecondRun(payload: GoalPayload): Boolean {
+        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
+        if (liveBefore && payload.runId != currentRunId) {
+            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
+            publish(
+                state.copy(
+                    currentReason = ONE_RUN_MESSAGE,
+                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
+                ),
+            )
+            return false
+        }
+        return true
+    }
+
+    private fun publishPlanningState(goal: Goal) {
+        publish(
+            RunState(
+                runId = goal.id.value,
+                phase = Phase.PLANNING,
+                currentIntent = goal.text,
+                indicatorState = IndicatorState.WORKING,
+                indicatorMode = preferredIndicatorMode,
+                brainRoute = goal.constraints.brainPin.name,
+            ),
+        )
+    }
+
+    private fun publishBrainUnavailable() {
+        publish(
+            state.copy(
+                phase = Phase.FAILED,
+                indicatorState = IndicatorState.ERROR,
+                currentReason = NO_BRAIN_MESSAGE,
+                lastError = ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = NO_BRAIN_MESSAGE),
+            ),
+        )
+    }
+
+    private fun publishBatterySuspended(reason: String) {
+        publish(
+            state.copy(
+                phase = Phase.FAILED,
+                indicatorState = IndicatorState.ERROR,
+                currentReason = reason,
+                lastError = ApiError(code = ErrorCode.INVALID_STATE, message = reason),
+            ),
+        )
+    }
+
     /**
      * Runs the loop, and turns anything it throws into a failed outcome.
      *
@@ -255,7 +266,44 @@ public class AgentRuntimeFacade(
             ledger = ledger,
             approvalSignal = approvalSignal(),
             ids = ids,
-            progress = RunProgress { step -> reportStep(step) },
+            progress = object : RunProgress {
+                override fun onStep(step: StepProgress) {
+                    reportStep(step)
+                }
+
+                override fun onStepOutcome(step: StepProgress) {
+                    if (step.stepId != null) {
+                        service?.publishEvent(
+                            type = "step.${step.intent.lowercase().replace(" ", "_")}",
+                            runId = current.runId,
+                            stepId = step.stepId,
+                            intent = step.intent,
+                            riskClass = step.riskClass,
+                            app = step.app,
+                            durationMs = step.durationMs,
+                            reason = step.reason,
+                        )
+                        // Capture a frame after the step settles and publish its
+                        // path so the console can show what the screen looked
+                        // like. The capture is best effort: a frame that cannot
+                        // be taken is simply not published.
+                        scope.launch {
+                            val path = indicator.captureScreen() ?: return@launch
+                            val bytes = try {
+                                java.io.File(path).readBytes()
+                            } catch (error: Exception) {
+                                Log.w(TAG, "the captured frame could not be read", error)
+                                return@launch
+                            }
+                            val runId = dev.lumen.core.model.RunId(current.runId)
+                            val stored = framePipeline.store(runId, bytes)
+                            if (stored != null) {
+                                service?.publishFrame(stored.toRelativePath(), 0, 0)
+                            }
+                        }
+                    }
+                }
+            },
             abort = abort,
             clock = { clock.nowMs() },
             config = runConfig(goal.constraints),
@@ -325,35 +373,6 @@ public class AgentRuntimeFacade(
                 },
             ),
         )
-        if (step.stepId != null) {
-            service?.publishEvent(
-                type = "step.${step.intent.lowercase().replace(" ", "_")}",
-                runId = current.runId,
-                stepId = step.stepId,
-                intent = step.intent,
-                riskClass = step.riskClass,
-                app = step.app,
-                durationMs = step.durationMs,
-                reason = step.reason,
-            )
-            // Capture a frame after the step settles and publish its path so
-            // the console can show what the screen looked like. The capture is
-            // best effort: a frame that cannot be taken is simply not
-            // published, and a dropped frame is not retried.
-            scope.launch {
-                val path = indicator.captureScreen() ?: return@launch
-                val bytes = try {
-                    java.io.File(path).readBytes()
-                } catch (error: Exception) {
-                    return@launch
-                }
-                val runId = dev.lumen.core.model.RunId(current.runId)
-                val stored = framePipeline.store(runId, bytes)
-                if (stored != null) {
-                    service?.publishFrame(stored.toRelativePath(), 0, 0)
-                }
-            }
-        }
     }
 
     /** The limits the loop runs under, from the goal that arrived. */
@@ -560,15 +579,16 @@ public class AgentRuntimeFacade(
         return (now - runStartedAtMs).coerceAtLeast(0L)
     }
 
-    private fun thermalStatus(reading: dev.lumen.core.quota.ThermalReading): String {
-        return when (reading.status) {
-            dev.lumen.core.quota.ThermalStatus.NONE -> "NONE"
-            dev.lumen.core.quota.ThermalStatus.LIGHT -> "LIGHT"
-            dev.lumen.core.quota.ThermalStatus.MODERATE -> "MODERATE"
-            dev.lumen.core.quota.ThermalStatus.SEVERE -> "SEVERE"
-            dev.lumen.core.quota.ThermalStatus.CRITICAL -> "CRITICAL"
-            dev.lumen.core.quota.ThermalStatus.EMERGENCY -> "EMERGENCY"
-            dev.lumen.core.quota.ThermalStatus.SHUTDOWN -> "SHUTDOWN"
+    private fun thermalStatus(reading: ThermalReading): String =
+        when (reading.status) {
+            ThermalStatus.NONE -> "NONE"
+            ThermalStatus.LIGHT -> "LIGHT"
+            ThermalStatus.MODERATE -> "MODERATE"
+            ThermalStatus.SEVERE -> "SEVERE"
+            ThermalStatus.CRITICAL -> "CRITICAL"
+            ThermalStatus.EMERGENCY -> "EMERGENCY"
+            ThermalStatus.SHUTDOWN -> "SHUTDOWN"
+        }
         }
     }
 

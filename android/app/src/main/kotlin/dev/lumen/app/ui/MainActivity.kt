@@ -135,7 +135,10 @@ class MainActivity : ComponentActivity() {
             } else {
                 LumenConsole(
                     state = connection.state,
-                    onStart = { goal, packages -> connection.setAllowedPackages(packages); connection.start(goal) },
+                    onStart = { goal, packages ->
+                        connection.setAllowedPackages(packages)
+                        connection.start(goal)
+                    },
                     onApprove = { connection.decide(it, approve = true) },
                     onDeny = { connection.decide(it, approve = false) },
                     onStop = { connection.abort() },

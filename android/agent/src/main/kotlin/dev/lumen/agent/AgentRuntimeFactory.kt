@@ -7,6 +7,7 @@ import android.os.BatteryManager
 import android.os.PowerManager
 import dev.lumen.agent.crash.CrashReporter
 import dev.lumen.agent.service.AgentRuntimeFacade
+import dev.lumen.agent.service.FramePipeline
 import dev.lumen.core.action.ActionLedger
 import dev.lumen.core.brain.BrainConfig
 import dev.lumen.core.brain.BrainFactory
@@ -22,11 +23,9 @@ import dev.lumen.core.model.SystemLumenClock
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.protocol.ContentEgressGuard
-import dev.lumen.core.quota.BatteryDecision
 import dev.lumen.core.quota.BatteryGovernor
 import dev.lumen.core.quota.BatteryProbe
 import dev.lumen.core.quota.BatteryReading
-import dev.lumen.core.quota.GovernorDecision
 import dev.lumen.core.quota.MemoryProbe
 import dev.lumen.core.quota.QuotaWatchdog
 import dev.lumen.core.quota.RamBudget
@@ -38,6 +37,21 @@ import dev.lumen.core.sandbox.SandboxRoot
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.sandbox.WorkspaceManager
 import dev.lumen.core.store.DatabaseKeyProvider
+import dev.lumen.core.store.FileLedgerSink
+import dev.lumen.core.store.LumenDatabase
+import dev.lumen.core.store.RoomStateStore
+import dev.lumen.platform.accessibility.AccessibilityBridgeClient
+import dev.lumen.platform.accessibility.UiEventTracker
+import dev.lumen.platform.idle.IdleGate
+import dev.lumen.platform.idle.IdleWindow
+import dev.lumen.platform.idle.PlatformScreenState
+import dev.lumen.platform.idle.TouchObserver
+import dev.lumen.platform.virtualdisplay.VirtualDisplayManager
+import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import dev.lumen.core.store.FileLedgerSink
 import dev.lumen.core.store.LumenDatabase
 import dev.lumen.core.store.RoomStateStore
@@ -141,6 +155,7 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     )
 
     /** Reads the device's thermal state from the platform. */
+    @Suppress("NewApi")
     public fun thermalProbe(): ThermalProbe = ThermalProbe {
         val manager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         val status = manager.currentThermalStatus
@@ -154,7 +169,9 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     public fun batteryProbe(): BatteryProbe = BatteryProbe {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val intent = context.registerReceiver(null, filter)
-        if (intent == null) BatteryReading(0, false) else {
+        if (intent == null) {
+        BatteryReading(0, false)
+    } else {
             val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL
@@ -260,13 +277,13 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     }
 
     private fun thermalCelsius(status: Int): Double = when (status) {
-        PowerManager.THERMAL_STATUS_LIGHT -> 38.0
-        PowerManager.THERMAL_STATUS_MODERATE -> 41.0
-        PowerManager.THERMAL_STATUS_SEVERE -> 44.0
-        PowerManager.THERMAL_STATUS_CRITICAL -> 47.0
-        PowerManager.THERMAL_STATUS_EMERGENCY -> 50.0
-        PowerManager.THERMAL_STATUS_SHUTDOWN -> 55.0
-        else -> 30.0
+        PowerManager.THERMAL_STATUS_LIGHT -> THERMAL_LIGHT_CELSIUS
+        PowerManager.THERMAL_STATUS_MODERATE -> THERMAL_MODERATE_CELSIUS
+        PowerManager.THERMAL_STATUS_SEVERE -> THERMAL_SEVERE_CELSIUS
+        PowerManager.THERMAL_STATUS_CRITICAL -> THERMAL_CRITICAL_CELSIUS
+        PowerManager.THERMAL_STATUS_EMERGENCY -> THERMAL_EMERGENCY_CELSIUS
+        PowerManager.THERMAL_STATUS_SHUTDOWN -> THERMAL_SHUTDOWN_CELSIUS
+        else -> THERMAL_NORMAL_CELSIUS
     }
 
     private fun thermalStatus(status: Int): ThermalStatus = when (status) {
@@ -325,6 +342,27 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
          * reason this is a decision rather than a lookup.
          */
         private const val LOCAL_MODEL_INSTALLED: Boolean = false
+
+        /** Nominal temperature when no thermal status is reported. */
+        private const val THERMAL_NORMAL_CELSIUS: Double = 30.0
+
+        /** Approximate Celsius at THERMAL_STATUS_LIGHT. */
+        private const val THERMAL_LIGHT_CELSIUS: Double = 38.0
+
+        /** Approximate Celsius at THERMAL_STATUS_MODERATE. */
+        private const val THERMAL_MODERATE_CELSIUS: Double = 41.0
+
+        /** Approximate Celsius at THERMAL_STATUS_SEVERE. */
+        private const val THERMAL_SEVERE_CELSIUS: Double = 44.0
+
+        /** Approximate Celsius at THERMAL_STATUS_CRITICAL. */
+        private const val THERMAL_CRITICAL_CELSIUS: Double = 47.0
+
+        /** Approximate Celsius at THERMAL_STATUS_EMERGENCY. */
+        private const val THERMAL_EMERGENCY_CELSIUS: Double = 50.0
+
+        /** Approximate Celsius at THERMAL_STATUS_SHUTDOWN. */
+        private const val THERMAL_SHUTDOWN_CELSIUS: Double = 55.0
     }
 }
 

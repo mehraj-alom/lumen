@@ -91,54 +91,63 @@ public class AgentRuntime(
      * the loop advances with the state this call mutated.
      */
     private suspend fun advance(state: RunState): RunOutcome? {
-        if (abort.isAborted) return RunOutcome.Aborted(state.stepsExecuted)
+        var result: RunOutcome? = null
 
-        thermalCheck()?.let {
-            return RunOutcome.Failed(it, state.stepsExecuted)
-        }
+        if (abort.isAborted) {
+            result = RunOutcome.Aborted(state.stepsExecuted)
+        } else {
+            thermalCheck()?.let { result = RunOutcome.Failed(it, state.stepsExecuted) }
 
-        checkBudget(state.startedAt, state.stepsExecuted)?.let { return it }
-
-        val step = nextStep(state.plan)
-        if (step == null) return idleAdvance(state)
-
-        report(state, step)
-
-        return when (val result = executeStep(state.goal, state.plan, step, state.observation)) {
-            is StepResult.Completed -> {
-                state.stepsExecuted++
-                state.observation = result.observation
-                state.plan = result.plan
-                reportOutcome(state, step, result)
-                null
+            if (result == null) {
+                checkBudget(state.startedAt, state.stepsExecuted)?.let { result = it }
             }
 
-            is StepResult.Finished -> {
-                state.stepsExecuted++
-                reportOutcome(state, step, result)
-                RunOutcome.Completed(result.summary, state.stepsExecuted)
-            }
-
-            is StepResult.NeedsReplan -> {
-                state.stepsExecuted++
-                state.observation = result.observation
-                reportOutcome(state, step, result)
-                if (state.replans >= config.maxReplans) {
-                    RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
+            if (result == null) {
+                val step = nextStep(state.plan)
+                if (step == null) {
+                    result = idleAdvance(state)
                 } else {
-                    state.replans++
-                    state.plan = revisePlan(state.goal, state.plan, failed = step, observation = result.observation)
-                    null
+                    report(state, step)
+                    result = when (val stepResult = executeStep(state.goal, state.plan, step, state.observation)) {
+                        is StepResult.Completed -> {
+                            state.stepsExecuted++
+                            state.observation = stepResult.observation
+                            state.plan = stepResult.plan
+                            reportOutcome(state, step, stepResult)
+                            null
+                        }
+
+                        is StepResult.Finished -> {
+                            state.stepsExecuted++
+                            reportOutcome(state, step, stepResult)
+                            RunOutcome.Completed(stepResult.summary, state.stepsExecuted)
+                        }
+
+                        is StepResult.NeedsReplan -> {
+                            state.stepsExecuted++
+                            state.observation = stepResult.observation
+                            reportOutcome(state, step, stepResult)
+                            if (state.replans >= config.maxReplans) {
+                                RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
+                            } else {
+                                state.replans++
+                                state.plan = revisePlan(state.goal, state.plan, failed = step, observation = stepResult.observation)
+                                null
+                            }
+                        }
+
+                        is StepResult.Failed -> {
+                            reportOutcome(state, step, stepResult)
+                            RunOutcome.Failed(stepResult.reason, state.stepsExecuted)
+                        }
+
+                        StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
+                    }
                 }
             }
-
-            is StepResult.Failed -> {
-                reportOutcome(state, step, result)
-                RunOutcome.Failed(result.reason, state.stepsExecuted)
-            }
-
-            StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
         }
+
+        return result
     }
 
     /**
@@ -153,7 +162,7 @@ public class AgentRuntime(
             is StepResult.NeedsReplan -> result.observation?.app
             else -> null
         } ?: ""
-        progress.onStep(
+        progress.onStepOutcome(
             StepProgress(
                 stepIndex = state.stepsExecuted,
                 totalSteps = state.plan.steps.size,

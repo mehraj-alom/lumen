@@ -36,6 +36,9 @@ public fun interface RunProgress {
     /** The loop is working on [step]. */
     public fun onStep(step: StepProgress)
 
+    /** The step [step] has finished; outcome fields are populated. */
+    public fun onStepOutcome(step: StepProgress) = Unit
+
     public companion object {
         /** The progress nobody is watching. */
         public val NONE: RunProgress = RunProgress { }
