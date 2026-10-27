@@ -52,22 +52,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import dev.lumen.core.store.FileLedgerSink
-import dev.lumen.core.store.LumenDatabase
-import dev.lumen.core.store.RoomStateStore
-import dev.lumen.agent.service.FramePipeline
-import dev.lumen.platform.accessibility.AccessibilityBridgeClient
-import dev.lumen.platform.accessibility.UiEventTracker
-import dev.lumen.platform.idle.IdleGate
-import dev.lumen.platform.idle.IdleWindow
-import dev.lumen.platform.idle.PlatformScreenState
-import dev.lumen.platform.idle.TouchObserver
-import dev.lumen.platform.virtualdisplay.VirtualDisplayManager
-import java.util.concurrent.TimeUnit
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * The composition root.
