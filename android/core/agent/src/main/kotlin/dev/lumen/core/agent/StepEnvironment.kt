@@ -38,7 +38,7 @@ public interface StepEnvironment {
  */
 public class DeviceActionExecutor(private val environment: StepEnvironment) : ActionExecutor {
 
-    override suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult = environment.perform(action, allowedPackages)
+    override suspend fun dispatch(action: Action, allowedPackages: Set<String>): ActionResult = environment.perform(action, allowedPackages)
 }
 
 /**

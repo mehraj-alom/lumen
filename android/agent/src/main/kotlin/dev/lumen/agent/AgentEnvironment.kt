@@ -45,7 +45,7 @@ public class AgentEnvironment(
         if (known == null || last > known) touchObserver.onTouch(last)
     }
 
-    override suspend fun perform(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
+    override suspend fun perform(action: Action, allowedPackages: Set<String>): ActionResult {
         refreshTouchSignal()
         val decision = SurfaceSelection.choose(
             request = SurfaceRequest(

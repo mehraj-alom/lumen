@@ -238,7 +238,7 @@ public class LedgeredActionExecutor(
     private val entry: ActionLedgerEntry,
 ) : ActionExecutor {
 
-    override suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
+    override suspend fun dispatch(action: Action, allowedPackages: Set<String>): ActionResult {
         val recorded = ledger.record(entry.copy(action = action))
 
         if (!recorded) {
