@@ -54,6 +54,41 @@ public class TouchObserver(private val clock: LumenClock = SystemLumenClock) {
 public data class IdleDecision(val permitted: Boolean, val reason: String, val waitMs: Long = 0L)
 
 /**
+ * The idle window the gate measures against.
+ *
+ * A holder rather than a number because the gate is built once, with the
+ * runtime, while the window is a decision the user makes later on the settings
+ * screen. Writing it through one object keeps the change visible to whoever
+ * reads the gate instead of leaving a second gate built from a newer number.
+ *
+ * The floor is not decoration: a window of zero would let an action go through
+ * a millisecond after the user touched the screen, which is the thing `I3`
+ * forbids, and a device setting is input rather than a trusted constant.
+ */
+public class IdleWindow(initialMs: Long = IdleGate.DEFAULT_IDLE_WINDOW_MS) {
+
+    @Volatile
+    private var windowMs: Long = initialMs.coerceAtLeast(MINIMUM_MS)
+
+    /**
+     * The window in force.
+     *
+     * Written by the binder thread that received the setting and read by the
+     * thread that runs the gate, which is why the value behind it is volatile.
+     */
+    public var ms: Long
+        get() = windowMs
+        set(value) {
+            windowMs = value.coerceAtLeast(MINIMUM_MS)
+        }
+
+    public companion object {
+        /** The shortest window the holder accepts, whatever it is told to use. */
+        public const val MINIMUM_MS: Long = 5_000L
+    }
+}
+
+/**
  * The idle gate.
  *
  * A live-surface action is permitted only when the user is not present:
@@ -64,7 +99,7 @@ public data class IdleDecision(val permitted: Boolean, val reason: String, val w
 public class IdleGate(
     private val screenState: ScreenStateSource,
     private val touchObserver: TouchObserver,
-    private val idleWindowMs: Long = DEFAULT_IDLE_WINDOW_MS,
+    private val idleWindow: IdleWindow = IdleWindow(),
     private val clock: LumenClock = SystemLumenClock,
 ) {
 
@@ -87,14 +122,18 @@ public class IdleGate(
         // The clock is read after the touch, so `since` cannot come out negative
         // when the two are sampled a millisecond apart.
         val since = clock.nowMs() - lastTouch
-        if (since >= idleWindowMs) {
+        // The window is read once, so the answer and the wait it reports are
+        // measured against the same number even if the user moves the setting
+        // while this decision is being made.
+        val windowMs = idleWindow.ms
+        if (since >= windowMs) {
             return permitted("the device has been untouched for ${since}ms, so the live surface is not in use")
         }
 
         return IdleDecision(
             permitted = false,
             reason = "the device was touched ${since}ms ago, so the live surface is in use",
-            waitMs = idleWindowMs - since,
+            waitMs = windowMs - since,
         )
     }
 
@@ -106,7 +145,12 @@ public class IdleGate(
     private fun permitted(reason: String): IdleDecision = IdleDecision(permitted = true, reason = reason)
 
     public companion object {
-        /** The default idle window. */
+        /**
+         * The default idle window.
+         *
+         * The settings screen offers the same sixty seconds as its default, so
+         * the gate and the screen agree before the user touches either.
+         */
         public const val DEFAULT_IDLE_WINDOW_MS: Long = 60_000L
     }
 }

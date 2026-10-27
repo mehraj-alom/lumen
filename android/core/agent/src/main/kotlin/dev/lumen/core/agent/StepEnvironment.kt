@@ -20,7 +20,7 @@ public interface StepEnvironment {
     public suspend fun observe(): Observation?
 
     /** Performs [action] and reports what happened, including the screen afterwards. */
-    public suspend fun perform(action: Action): ActionResult
+    public suspend fun perform(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult
 
     /** The package currently in front, or null on a virtual display. */
     public suspend fun foregroundPackage(): String?
@@ -38,7 +38,7 @@ public interface StepEnvironment {
  */
 public class DeviceActionExecutor(private val environment: StepEnvironment) : ActionExecutor {
 
-    override suspend fun dispatch(action: Action): ActionResult = environment.perform(action)
+    override suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult = environment.perform(action, allowedPackages)
 }
 
 /**
@@ -68,6 +68,7 @@ public data class RunConfig(
     val costLimitMicros: Long = 0L,
     val approvalPollIntervalMs: Long = 50L,
     val maxReplans: Int = 25,
+    val allowedPackages: Set<String> = emptySet(),
 )
 
 /** The default wall-clock ceiling for a run: 45 minutes (`AGENTS.md` §2). */

@@ -32,15 +32,23 @@ import dev.lumen.platform.overlay.IndicatorMode
  * states its consequence rather than only naming itself. Each section is its
  * own composable, so changing one decision does not touch the markup of
  * another.
+ *
+ * Each callback writes through the connection, which saves the value, sends it
+ * to the runtime and re-sends it on the next bind — so the screen and the
+ * device are never allowed to drift apart silently, and no control on this page
+ * is a preference the runtime never hears about. The pin is the one exception:
+ * it belongs to a run, so it travels with the next goal rather than crossing the
+ * wire now, and a run keeps the pin it was planned with.
  */
 @Composable
 public fun SettingsScreen(
     state: SettingsState,
     onIndicatorMode: (IndicatorMode) -> Unit,
     onBrainPin: (String) -> Unit,
-    onSpectating: (Boolean) -> Unit,
+    onScreenTextEgress: (Boolean) -> Unit,
     onCrashReporting: (Boolean) -> Unit,
     onIdleWindow: (Int) -> Unit,
+    onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -59,8 +67,17 @@ public fun SettingsScreen(
 
         IndicatorSection(state.indicatorMode, onIndicatorMode)
         BrainSection(state.brainPin, onBrainPin)
-        PrivacySection(state.spectatingEnabled, state.crashReportingEnabled, onSpectating, onCrashReporting)
+        PrivacySection(
+            screenTextEgress = state.spectatingEnabled,
+            crashReportingEnabled = state.crashReportingEnabled,
+            onScreenTextEgress = onScreenTextEgress,
+            onCrashReporting = onCrashReporting,
+        )
         IdleWindowSection(state.idleWindowSeconds, onIdleWindow)
+
+        androidx.compose.material3.Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to the console")
+        }
     }
 }
 
@@ -121,9 +138,9 @@ private fun BrainSection(pin: String, onBrainPin: (String) -> Unit) {
 /** What leaves the device. */
 @Composable
 private fun PrivacySection(
-    spectatingEnabled: Boolean,
+    screenTextEgress: Boolean,
     crashReportingEnabled: Boolean,
-    onSpectating: (Boolean) -> Unit,
+    onScreenTextEgress: (Boolean) -> Unit,
     onCrashReporting: (Boolean) -> Unit,
 ) {
     GlassSurface(kind = GlassSurfaceKind.CARD, modifier = Modifier.fillMaxWidth()) {
@@ -131,15 +148,17 @@ private fun PrivacySection(
             SectionHeader("PRIVACY")
             Spacer(Modifier.height(10.dp))
             Toggle(
-                label = "Live spectating",
-                detail = "Lets the web console see the screen. While this is off, no " +
-                    "screen content leaves the device at all.",
-                checked = spectatingEnabled,
-            ) { onSpectating(it) }
+                label = "Send the text on screen to the brain",
+                detail = "Off by default. The plan is built from what is on the screen, " +
+                    "and this is what lets that text go to the endpoint you configured. " +
+                    "Screenshots never leave the device.",
+                checked = screenTextEgress,
+            ) { onScreenTextEgress(it) }
             Toggle(
-                label = "Send crash reports",
-                detail = "Off by default. A report contains the stack trace and the " +
-                    "version, with the screen content and the file paths removed.",
+                label = "Write down a crash",
+                detail = "Off by default. When it is on, a crash of the runtime is written " +
+                    "into the sandbox as a report you can read or delete. It holds the " +
+                    "version, the stack trace and nothing the screen showed.",
                 checked = crashReportingEnabled,
             ) { onCrashReporting(it) }
         }
@@ -155,8 +174,9 @@ private fun IdleWindowSection(idleWindowSeconds: Int, onIdleWindow: (Int) -> Uni
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "The agent only uses the live screen after the device has been " +
-                    "untouched for $idleWindowSeconds seconds. Lower is safer; " +
-                    "higher lets the agent start sooner after you put the phone down.",
+                    "untouched for $idleWindowSeconds seconds. Higher keeps the agent off a " +
+                    "screen you might pick up again; lower lets it start sooner, and it " +
+                    "never acts while your own touch is going on.",
                 color = Color(GlassTokens.TEXT_SECONDARY),
                 fontSize = 14.sp,
                 lineHeight = 20.sp,

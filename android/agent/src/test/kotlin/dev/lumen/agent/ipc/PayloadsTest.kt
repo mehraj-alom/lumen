@@ -2,6 +2,7 @@ package dev.lumen.agent.ipc
 
 import com.google.common.truth.Truth.assertThat
 import dev.lumen.core.model.BrainPin
+import dev.lumen.platform.idle.IdleGate
 import kotlinx.serialization.json.Json
 import org.junit.Test
 
@@ -65,5 +66,32 @@ class PayloadsTest {
         assertThat(constraints.stepsSoftLimit).isEqualTo(20)
         assertThat(constraints.stepsHardLimit).isEqualTo(40)
         assertThat(constraints.wallClockLimitMs).isEqualTo(300_000L)
+    }
+
+    @Test
+    fun `the device settings that leave the console are the ones the runtime reads`() {
+        val payload = DeviceSettingsPayload(
+            indicatorMode = "STATUS_DOT",
+            idleWindowMs = 15_000L,
+            crashReporting = true,
+        )
+
+        val readBack = json.decodeFromString(
+            DeviceSettingsPayload.serializer(),
+            json.encodeToString(DeviceSettingsPayload.serializer(), payload),
+        )
+
+        assertThat(readBack.indicatorMode).isEqualTo("STATUS_DOT")
+        assertThat(readBack.idleWindowMs).isEqualTo(15_000L)
+        assertThat(readBack.crashReporting).isTrue()
+    }
+
+    @Test
+    fun `settings from a console that never chose anything are the glow, the default window, no report`() {
+        val payload = json.decodeFromString(DeviceSettingsPayload.serializer(), "{}")
+
+        assertThat(payload.indicatorMode).isEqualTo("EDGE_GLOW")
+        assertThat(payload.idleWindowMs).isEqualTo(IdleGate.DEFAULT_IDLE_WINDOW_MS)
+        assertThat(payload.crashReporting).isFalse()
     }
 }

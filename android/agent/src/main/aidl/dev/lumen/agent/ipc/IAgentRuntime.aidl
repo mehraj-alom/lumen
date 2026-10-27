@@ -52,6 +52,18 @@ interface IAgentRuntime {
     void setBrainPin(String runId, String pin);
 
     /**
+     * Applies the device settings the console owns: the indicator mode, the idle
+     * window and whether a crash of this process is written down.
+     *
+     * The settings cross the wire rather than being read from a file because the
+     * two processes hold no settings in common: the console writes them and the
+     * runtime acts on what it is sent.
+     *
+     * @param settingsJson the settings, in the shape of `API_SPEC.md` §2
+     */
+    void applyDeviceSettings(String settingsJson);
+
+    /**
      * Takes the run over, or releases it back to the agent.
      */
     void setTakeover(String runId, boolean takenOver);

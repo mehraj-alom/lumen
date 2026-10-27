@@ -89,17 +89,23 @@ private val TERMINAL_PHASES: Set<String> = setOf("DONE", "FAILED", "ABORTED")
  * There is no takeover control here yet: [ConsoleState.takeoverActive] arrives
  * with the state and nothing on this view reads it. The web console is where a
  * takeover is requested.
+ *
+ * [onOpenSettings] is the way out of this screen to the settings, which are the
+ * one part of the app the runtime acts on but the console owns.
  */
 @Composable
 public fun LumenConsole(
     state: ConsoleState,
-    onStart: (String) -> Unit,
+    onStart: (String, String) -> Unit,
     onApprove: (String) -> Unit,
     onDeny: (String) -> Unit,
     onStop: () -> Unit,
+    onTakeover: (Boolean) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var goal by remember { mutableStateOf("") }
+    var allowedPackages by remember { mutableStateOf("") }
     val awaitingGoal = state.phase == "IDLE" || state.phase in TERMINAL_PHASES
 
     Column(
@@ -110,12 +116,18 @@ public fun LumenConsole(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Header(state)
+        Header(state = state, onOpenSettings = onOpenSettings)
 
         if (awaitingGoal) {
-            GoalControl(goal = goal, onGoalChange = { goal = it }, onStart = { onStart(goal.trim()) })
+            GoalControl(
+                goal = goal,
+                onGoalChange = { goal = it },
+                allowedPackages = allowedPackages,
+                onAllowedPackagesChange = { allowedPackages = it },
+                onStart = { onStart(goal.trim(), allowedPackages) },
+            )
         } else {
-            RunningControl(state = state, onStop = onStop)
+            RunningControl(state = state, onStop = onStop, onTakeover = onTakeover)
         }
 
         state.approvals.forEach { approval ->
@@ -139,25 +151,48 @@ public fun LumenConsole(
  * empty run.
  */
 @Composable
-private fun GoalControl(goal: String, onGoalChange: (String) -> Unit, onStart: () -> Unit) {
+private fun GoalControl(
+    goal: String,
+    onGoalChange: (String) -> Unit,
+    allowedPackages: String,
+    onAllowedPackagesChange: (String) -> Unit,
+    onStart: () -> Unit,
+) {
     GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            androidx.compose.material3.OutlinedTextField(
-                value = goal,
-                onValueChange = onGoalChange,
-                label = { Text("What should the agent do?") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Spacer(Modifier.width(12.dp))
-            androidx.compose.material3.Button(
-                onClick = onStart,
-                enabled = goal.isNotBlank(),
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Start")
+                androidx.compose.material3.OutlinedTextField(
+                    value = goal,
+                    onValueChange = onGoalChange,
+                    label = { Text("What should the agent do?") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = allowedPackages,
+                    onValueChange = onAllowedPackagesChange,
+                    label = { Text("Allowed packages (comma-separated, optional)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                androidx.compose.material3.Button(
+                    onClick = onStart,
+                    enabled = goal.isNotBlank(),
+                ) {
+                    Text("Start")
+                }
             }
         }
     }
@@ -204,14 +239,18 @@ public fun GroundingNotice(onEnable: () -> Unit, modifier: Modifier = Modifier) 
 
 /**
  * The control shown while a run is live: what the agent is doing now, and the
- * stop.
+ * stop and takeover.
  *
  * The stop is unconditional. `I12` says the user can abort within one action
  * boundary, so the control is present in every phase that is not idle, and the
  * request it sends is honoured whatever run id the runtime is holding.
+ *
+ * The takeover hands the screen back to the user, or gives it back to the
+ * agent. When the user has taken over, the run is paused and the control says
+ * so; giving it back resumes the run.
  */
 @Composable
-private fun RunningControl(state: ConsoleState, onStop: () -> Unit) {
+private fun RunningControl(state: ConsoleState, onStop: () -> Unit, onTakeover: (Boolean) -> Unit) {
     GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -230,17 +269,48 @@ private fun RunningControl(state: ConsoleState, onStop: () -> Unit) {
                         fontSize = 13.sp,
                     )
                 }
+                if (state.takeoverActive) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "you have taken over — give control back to resume",
+                        color = Color(GlassTokens.TEXT_SECONDARY),
+                        fontSize = 12.sp,
+                    )
+                }
             }
-            androidx.compose.material3.OutlinedButton(onClick = onStop) {
-                Text("Stop")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.takeoverActive) {
+                    androidx.compose.material3.Button(
+                        onClick = { onTakeover(false) },
+                    ) {
+                        Text("Give back")
+                    }
+                } else {
+                    androidx.compose.material3.Button(
+                        onClick = { onTakeover(true) },
+                    ) {
+                        Text("Take over")
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.OutlinedButton(onClick = onStop) {
+                    Text("Stop")
+                }
             }
         }
     }
 }
 
-/** The status row. */
+/**
+ * The status row, and the way to the settings.
+ *
+ * The settings live on this row rather than behind a menu because they hold the
+ * four things the user may need to change about a device that is acting on it:
+ * how the agent shows itself, how long the phone must be idle before it touches
+ * the screen, where the reasoning runs, and whether a crash is written down.
+ */
 @Composable
-private fun Header(state: ConsoleState) {
+private fun Header(state: ConsoleState, onOpenSettings: () -> Unit) {
     GlassSurface(kind = GlassSurfaceKind.INLINE, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -264,6 +334,14 @@ private fun Header(state: ConsoleState) {
                 color = Color(GlassTokens.TEXT_TERTIARY),
                 fontSize = 13.sp,
             )
+            Spacer(Modifier.width(16.dp))
+            androidx.compose.material3.TextButton(onClick = onOpenSettings) {
+                Text(
+                    text = "Settings",
+                    color = Color(GlassTokens.TEXT_SECONDARY),
+                    fontSize = 14.sp,
+                )
+            }
         }
     }
 }

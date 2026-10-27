@@ -95,6 +95,14 @@ public class AgentRuntimeService : android.app.Service() {
             scope.launch { runtime?.setBrainPin(runId.orEmpty(), pin.orEmpty()) }
         }
 
+        override fun applyDeviceSettings(settingsJson: String?) {
+            val payload = settingsJson?.let { parseSettings(it) } ?: return
+            // Not run-scoped: these are decisions about the device, and a run
+            // that is going now is measured against the window the user chose
+            // while it was going.
+            scope.launch { runtime?.applyDeviceSettings(payload) }
+        }
+
         override fun setTakeover(runId: String?, takenOver: Boolean) {
             scope.launch { runtime?.setTakeover(runId.orEmpty(), takenOver) }
         }
@@ -175,6 +183,12 @@ public class AgentRuntimeService : android.app.Service() {
         val built = AgentRuntimeFactory(applicationContext).start()
         runtime = built
         built.attach(this)
+        // Before anything can go wrong: a runtime that dies on its first step
+        // and dies unrecorded is the case the reporter exists for. The handler
+        // writes nothing until the console sends the settings that say the user
+        // asked for reports, so installing it here is not a decision on the
+        // user's behalf.
+        built.installCrashReporting()
     }
 
     /**
@@ -251,13 +265,26 @@ public class AgentRuntimeService : android.app.Service() {
     }
 
     /** Pushes a step event to the console. */
-    public fun publishEvent(type: String, runId: String, intent: String?, reason: String?) {
+    public fun publishEvent(
+        type: String,
+        runId: String,
+        stepId: String? = null,
+        intent: String?,
+        riskClass: String? = null,
+        app: String? = null,
+        durationMs: Long? = null,
+        reason: String?,
+    ) {
         val event = dev.lumen.agent.ipc.StepEventPayload(
             type = type,
             runId = runId,
             seq = sequence.incrementAndGet(),
             tsMs = System.currentTimeMillis(),
+            stepId = stepId,
             intent = intent,
+            riskClass = riskClass,
+            app = app,
+            durationMs = durationMs,
             reason = reason,
         )
         val payload = json.encodeToString(
@@ -346,6 +373,21 @@ public class AgentRuntimeService : android.app.Service() {
                 ),
             )
             .build()
+    }
+
+    /**
+     * Reads the settings the console sent.
+     *
+     * A payload that does not parse is dropped in the log rather than applied
+     * half: an idle window that arrived as a string must not become the gate's
+     * number by accident, because the gate is the thing standing between the
+     * agent and a screen the user is holding (`I3`).
+     */
+    private fun parseSettings(settingsJson: String): dev.lumen.agent.ipc.DeviceSettingsPayload? = try {
+        json.decodeFromString(dev.lumen.agent.ipc.DeviceSettingsPayload.serializer(), settingsJson)
+    } catch (error: Exception) {
+        Log.w(TAG, "the device settings payload could not be read", error)
+        null
     }
 
     private fun parseGoal(goalJson: String): dev.lumen.agent.ipc.GoalPayload? = try {

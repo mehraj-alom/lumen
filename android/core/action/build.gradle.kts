@@ -18,7 +18,7 @@ dependencies {
     // The fixture source set is its own compilation: it does not inherit
     // `implementation`, and its public API mentions `:core:model` types, so
     // those go in as `api` for the modules that consume the fixtures.
-    testFixturesApi(project(":core:model"))
+    testFixturesImplementation(project(":core:model"))
     testFixturesImplementation(libs.kotlin.stdlib)
     testFixturesImplementation(libs.coroutines.core)
 

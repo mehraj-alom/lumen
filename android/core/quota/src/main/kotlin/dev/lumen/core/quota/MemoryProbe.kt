@@ -17,6 +17,20 @@ public fun interface MemoryProbe {
     public fun measuredMiB(): Int
 }
 
+/** Reads the device's thermal state. */
+public fun interface ThermalProbe {
+
+    /** The current thermal reading. */
+    public fun read(): ThermalReading
+}
+
+/** Reads the device's battery state. */
+public fun interface BatteryProbe {
+
+    /** The current battery reading. */
+    public fun read(): BatteryReading
+}
+
 /**
  * A component that can give memory back.
  *

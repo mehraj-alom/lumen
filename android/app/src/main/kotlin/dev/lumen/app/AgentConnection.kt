@@ -15,6 +15,7 @@ import dev.lumen.agent.ipc.AgentStatePayload
 import dev.lumen.agent.ipc.ApprovalPayload
 import dev.lumen.agent.ipc.BrainConfigPayload
 import dev.lumen.agent.ipc.BudgetPayload
+import dev.lumen.agent.ipc.DeviceSettingsPayload
 import dev.lumen.agent.ipc.GoalPayload
 import dev.lumen.agent.ipc.IAgentRuntime
 import dev.lumen.agent.ipc.IAgentStateCallback
@@ -22,6 +23,7 @@ import dev.lumen.agent.ipc.StepEventPayload
 import dev.lumen.agent.service.AgentRuntimeService
 import dev.lumen.app.ui.ApprovalCard
 import dev.lumen.app.ui.ConsoleState
+import dev.lumen.app.ui.SettingsState
 import dev.lumen.app.ui.TraceLine
 import dev.lumen.core.model.UlidGenerator
 import kotlinx.serialization.DeserializationStrategy
@@ -58,6 +60,16 @@ public class AgentConnection(context: Context) {
     public var state: ConsoleState by mutableStateOf(ConsoleState())
         private set
 
+    /**
+     * What the settings screen shows.
+     *
+     * It starts as the saved answer, not as the screen's own default: a setting
+     * the user chose and the screen then redrew as `EDGE_GLOW` would be a setting
+     * that lies about the device.
+     */
+    public var deviceSettings: SettingsState by mutableStateOf(settings.deviceSettings)
+        private set
+
     /** Whether a run can be started at all: the brain has to be configured. */
     public var isConfigured: Boolean by mutableStateOf(settings.brainIsConfigured)
         private set
@@ -65,6 +77,15 @@ public class AgentConnection(context: Context) {
     private var runtime: IAgentRuntime? = null
     private var runId: String = ""
     private var bound = false
+
+    /** The packages the console has allowed the agent to act on, comma-separated. */
+    public var allowedPackages: String = ""
+        private set
+
+    /** Records the allowed packages the user typed into the goal composer. */
+    public fun setAllowedPackages(text: String) {
+        allowedPackages = text.trim()
+    }
 
     private val callbacks = object : IAgentStateCallback.Stub() {
 
@@ -101,6 +122,11 @@ public class AgentConnection(context: Context) {
                 // unregistered; the screen keeps the last state and says so.
                 Log.w(TAG, "the state callback could not be registered", error)
             }
+            // The runtime process starts with reporting off and the window it
+            // was built with, whatever the user chose last time: the settings are
+            // this process's, and they only exist over there once they are sent.
+            // So every bind re-asserts them, including the bind after a crash.
+            sendDeviceSettings()
             refreshBudget()
         }
 
@@ -185,7 +211,14 @@ public class AgentConnection(context: Context) {
             return
         }
         val proposed = ids.next()
-        val payload = GoalPayload(runId = proposed, text = text, brain = settings.brain)
+        val packages = allowedPackages.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        val payload = GoalPayload(
+            runId = proposed,
+            text = text,
+            brain = settings.brain,
+            brainPin = deviceSettings.brainPin,
+            allowedPackages = packages,
+        )
         val accepted = try {
             agent.startGoal(json.encodeToString(GoalPayload.serializer(), payload))
         } catch (error: Exception) {
@@ -204,6 +237,49 @@ public class AgentConnection(context: Context) {
     public fun saveBrain(brain: BrainConfigPayload) {
         settings.brain = brain
         isConfigured = settings.brainIsConfigured
+        // The consent to send screen text is carried in the brain configuration,
+        // so the settings screen re-reads it here rather than going on showing
+        // the value it was built with when the app opened.
+        deviceSettings = settings.deviceSettings
+    }
+
+    /**
+     * Saves a device setting and puts it to work.
+     *
+     * Three things happen, because each one is a promise the screen makes: the
+     * value outlives the process, the runtime changes what it does with the
+     * device, and the next goal carries the pin chosen here. A control that only
+     * moved the screen would be a control that does nothing.
+     */
+    public fun applySettings(next: SettingsState) {
+        deviceSettings = next
+        settings.deviceSettings = next
+        sendDeviceSettings()
+    }
+
+    /**
+     * Sends the settings the runtime acts on.
+     *
+     * No binder is not a failure here: the console can be opened while the
+     * runtime is still starting, and the bind re-sends them the moment there is
+     * one to send to.
+     */
+    private fun sendDeviceSettings() {
+        val agent = runtime ?: return
+        val payload = DeviceSettingsPayload(
+            indicatorMode = deviceSettings.indicatorMode.name,
+            idleWindowMs = deviceSettings.idleWindowSeconds.toLong() * SECONDS_PER_MILLISECOND,
+            crashReporting = deviceSettings.crashReportingEnabled,
+        )
+        try {
+            agent.applyDeviceSettings(json.encodeToString(DeviceSettingsPayload.serializer(), payload))
+        } catch (error: Exception) {
+            // The setting is saved and the screen shows it, so the user sees a
+            // changed value that the runtime has not been told about. The next
+            // bind says so again; the trace names it, because a silent
+            // disagreement between the screen and the device is the worst kind.
+            Log.w(TAG, "the device settings could not be sent", error)
+        }
     }
 
     /** Answers an approval. The decision is the only irreversible thing here. */
@@ -246,6 +322,21 @@ public class AgentConnection(context: Context) {
         }
     }
 
+    /** Takes the run over, or gives it back. */
+    public fun takeover(takeOver: Boolean) {
+        val agent = runtime
+        if (agent == null) {
+            state = state.copy(trace = traced(TraceLine(NO_ABORT_MESSAGE, KIND_ERROR)))
+            connect()
+            return
+        }
+        try {
+            agent.setTakeover(runId, takeOver)
+        } catch (error: Exception) {
+            Log.w(TAG, "the takeover could not be sent", error)
+        }
+    }
+
     private fun refreshBudget() {
         val agent = runtime ?: return
         val wire = try {
@@ -277,6 +368,14 @@ public class AgentConnection(context: Context) {
             currentReason = payload.currentReason.orEmpty(),
             brainRoute = payload.brainRoute,
             takeoverActive = payload.takeoverActive,
+            plan = payload.plan.map { node ->
+                PlanNode(
+                    intent = node.intent,
+                    state = node.state,
+                    active = node.active,
+                    riskClass = node.riskClass,
+                )
+            },
             // The approvals are not cleared here. A phase that is no longer
             // *waiting* does not mean the gate was answered: a stop publishes
             // `ABORTED` while the loop still holds the gate open, and a card
@@ -289,7 +388,15 @@ public class AgentConnection(context: Context) {
 
     private fun applyEvent(wire: String?) {
         val event = decode(StepEventPayload.serializer(), wire) ?: return
-        val text = event.reason ?: event.intent ?: event.text ?: event.type
+        val text = buildString {
+            event.type?.let { append(it) }
+            event.stepId?.let { append(" step=$it") }
+            event.riskClass?.let { append(" risk=${it}") }
+            event.app?.let { append(" app=$it") }
+            event.durationMs?.let { append(" ${it}ms") }
+            append(": ")
+            append(event.reason ?: event.intent ?: event.text ?: "")
+        }
         state = state.copy(trace = traced(TraceLine(text, event.type)))
     }
 
@@ -332,6 +439,9 @@ public class AgentConnection(context: Context) {
         private const val TAG = "LumenConsoleConnection"
 
         private const val MAX_TRACE_LINES = 50
+
+        /** The window is chosen in seconds and measured in milliseconds. */
+        private const val SECONDS_PER_MILLISECOND: Long = 1_000L
 
         private const val PHASE_PLANNING = "PLANNING"
         private const val PHASE_WAITING = "WAITING_APPROVAL"

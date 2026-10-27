@@ -13,7 +13,8 @@ class IdleGateTest {
         override fun isKeyguardLocked(): Boolean = keyguardLocked
     }
 
-    private fun gate(state: FakeScreenState, observer: TouchObserver, windowMs: Long = 60_000L) = IdleGate(state, observer, windowMs, clock)
+    private fun gate(state: FakeScreenState, observer: TouchObserver, windowMs: Long = 60_000L) =
+        IdleGate(state, observer, IdleWindow(windowMs), clock)
 
     @Test
     fun `a screen that is off permits the live surface`() {
@@ -93,5 +94,53 @@ class IdleGateTest {
         observer.clear()
 
         assertThat(observer.lastTouchMs()).isNull()
+    }
+
+    @Test
+    fun `the window the user set is the window the gate measures`() {
+        val state = FakeScreenState()
+        val observer = TouchObserver(clock)
+        val window = IdleWindow(60_000L)
+        val gate = IdleGate(state, observer, window, clock)
+        observer.onTouch(clock.nowMs())
+
+        clock.advance(20_000L)
+        assertThat(gate.permitsLiveSurface().permitted).isFalse()
+
+        window.ms = 15_000L
+        assertThat(gate.permitsLiveSurface().permitted).isTrue()
+    }
+
+    @Test
+    fun `the wait is measured against the window in force`() {
+        val state = FakeScreenState()
+        val observer = TouchObserver(clock)
+        val window = IdleWindow(60_000L)
+        val gate = IdleGate(state, observer, window, clock)
+        observer.onTouch(clock.nowMs())
+
+        clock.advance(10_000L)
+        window.ms = 30_000L
+
+        assertThat(gate.permitsLiveSurface().waitMs).isEqualTo(20_000L)
+    }
+
+    @Test
+    fun `a window below the floor still keeps the agent off a screen the user just touched`() {
+        val state = FakeScreenState()
+        val observer = TouchObserver(clock)
+        val window = IdleWindow(0L)
+        val gate = IdleGate(state, observer, window, clock)
+        observer.onTouch(clock.nowMs())
+
+        clock.advance(4_000L)
+
+        // A window of zero is not a window: the floor is what the gate measures
+        // against, and four seconds after a touch is not the device being idle.
+        assertThat(window.ms).isEqualTo(IdleWindow.MINIMUM_MS)
+        assertThat(gate.permitsLiveSurface().permitted).isFalse()
+
+        window.ms = 1L
+        assertThat(window.ms).isEqualTo(IdleWindow.MINIMUM_MS)
     }
 }

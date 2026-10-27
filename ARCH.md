@@ -318,7 +318,7 @@ agent did not agree to act on.
 - `IdleGate` is satisfied when the screen is off, **or** the screen is on and no touch has been observed for the idle window (default 60 s).
 - Any touch event resets the timer; the agent pauses at the next boundary (≤ 1 s).
 - `VirtualDisplayManager` creates a private display, moves the target activity onto it with `ActivityManager.moveTaskToDisplay`, and reports success/failure. Failure is not fatal — the step falls back to the live surface **if** the idle gate allows it.
-- The allowlist is checked before *both* paths. A package not on the allowlist is never dispatched to, on any surface.
+- The allowlist is checked before *both* paths. A package not on the allowlist is never dispatched to, on any surface. The check itself is on the dispatch path: `AgentEnvironment.perform` folds the run's package set into `SurfaceRequest` and `SurfaceSelection.denialFor` refuses on it before the idle gate. **What is missing is the set.** `AgentEnvironment`'s `allowlist` parameter is a supplier that defaults to `{ emptySet() }`, `AgentRuntimeFactory.environment()` builds it without one, and nothing on the console can name a package, so every request arrives with an empty allowlist and every action is refused with *"the package … is not on the allowlist"* — fail-closed, and a run that cannot complete a single step. `ActionValidator` and `PackageAllowlist` in `:core:action` are the same rule written a second time and are constructed only in their own tests. Filling the set is a product decision (the goal already carries `allowedPackages`, and a device with no picker for installed apps cannot offer one without a new permission), so `TASK.md` §M15 carries it as the item that blocks a first successful run.
 
 ---
 

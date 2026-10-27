@@ -35,6 +35,30 @@ public data class BrainReply(
     public val isEmpty: Boolean get() = steps.isEmpty()
 }
 
+/** Token usage from a model reply. */
+public data class Usage(val promptTokens: Int = 0, val completionTokens: Int = 0)
+
+/** The price of one model's tokens, in micros per token. */
+public data class ModelPrice(val promptTokensPerMicros: Int, val completionTokensPerMicros: Int)
+
+/** A table of per-model prices. Empty means no cost is reported. */
+public class PriceTable(private val prices: Map<String, ModelPrice> = emptyMap()) {
+
+    /** The price for [modelId], or null when the model is not priced. */
+    public fun priceFor(modelId: String): ModelPrice? = prices[modelId]
+
+    /** The cost of [promptTokens] and [completionTokens] for [modelId], in micros, or null when unpriced. */
+    public fun costMicros(modelId: String, promptTokens: Int, completionTokens: Int): Long? {
+        val price = priceFor(modelId) ?: return null
+        return promptTokens.toLong() * price.promptTokensPerMicros + completionTokens.toLong() * price.completionTokensPerMicros
+    }
+
+    public companion object {
+        /** No prices: every model costs nothing to report. */
+        public val Empty: PriceTable = PriceTable()
+    }
+}
+
 /** The brain's judgement of a step that has run. */
 public data class Critique(val verdict: Verdict, val reason: String, val observationSummary: String? = null)
 

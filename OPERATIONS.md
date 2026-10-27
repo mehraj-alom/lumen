@@ -87,7 +87,7 @@ It stops and asks before anything irreversible. In the flight example that is th
 
 Three ways, in increasing order of detail:
 
-1. **The screen indicator.** A glowing band along the edges. It is on while LUMEN is working, waiting for approval, or blocked, and it goes out when the run ends. In this build it is always the edge band: the mode setting that would switch it to the status dot or off is on a screen that is not reachable yet, so "you can switch it off entirely" is not available — revoking the accessibility service takes the window with it, and the foreground notification is what remains. The colours mean: cyan *working*, amber *needs you*, red *blocked*, orange *aborting*.
+1. **The screen indicator.** A glowing band along the edges. It is on while LUMEN is working, waiting for approval, or blocked, and it goes out when the run ends. Console → **Settings** → *The indicator* switches it to a small pulsing dot, or off entirely; the choice is saved on the device and sent to the runtime, so the next run starts with the mode you chose. Off does not mean unobservable: revoking the accessibility service takes the overlay window with it, and the foreground notification is what remains either way. The colours mean: cyan *working*, amber *needs you*, red *blocked*, orange *aborting*.
 2. **The on-device console.** The step counter, the intent of the step the agent is on, the reason the planner gave for it, the reasoning trace, the budget meters, and the approvals. Each step the loop chooses is published before it acts, so a run that has gone quiet on step 31 of 80 is a run you can see thinking, not a run you have to guess about. What this build does not show is the plan graph: the state stream carries a position in the plan and a plan version, not the plan's shape, and drawing the graph is an open `TASK.md` M15 item.
 3. **The web console.** All of that, plus the live screen, from another machine — not in this build; see §3.
 
@@ -95,9 +95,11 @@ Three ways, in increasing order of detail:
 
 The live view needs screen content to leave the device, so it is **off by default** and it is a separate switch from the rest of the console. With it off, no screen content leaves the device at all — not through the web console, not through the brain, not in a trace. This is enforced at the point of sending, not by convention.
 
-**In this build the switch is on the setup screen, and it means one thing only: whether the planner may read the screen.** The console takes the consent when you configure the endpoint and sends it with every goal, and the runtime builds that run's egress guard from it — off, and screen text is denied at the point of sending; on, and the text the agent reads goes to the endpoint you typed. It is a per-run decision, not a process-wide setting, and the run is auditable against the consent it started with.
+**In this build the switch means one thing only: whether the planner may read the screen.** The console takes the consent when you configure the endpoint and sends it with every goal, and the runtime builds that run's egress guard from it — off, and screen text is denied at the point of sending; on, and the text the agent reads goes to the endpoint you typed. It is a per-run decision, not a process-wide setting, and the run is auditable against the consent it started with.
 
-What is **not** wired is the rest of the spectating path: the web console cannot be turned on from the app (`SettingsScreen` is drawn but unreachable), and no frames are streamed to it, so the live view from another machine is still a `TASK.md` M15 item. Turning this switch on sends text to your model endpoint; it does not open a video path to anyone else.
+The same consent is a switch on **Console → Settings**, and changing it there changes the next goal you start — the two screens write one value, and the runtime hears about it on the same wire as the idle window and the indicator mode.
+
+What is **not** wired is the rest of the spectating path: no frames are streamed to the web console, because nothing in the runtime captures one — `FramePipeline` is built and never constructed, and the frame callback has no caller — so the live view from another machine is still a `TASK.md` M15 item. Turning this switch on sends text to your model endpoint; it does not open a video path to anyone else.
 
 ---
 
@@ -138,9 +140,9 @@ The console shows all of them live. The quota report is in `workspace/quota-repo
 ## 9. What it does not do
 
 - It does not run on its own. Every run starts with a goal you typed.
-- It does not work in the background forever. A run has a wall-clock budget, and a device that is hot or flat pauses it.
-- It does not touch anything you have not allowed. The allowlist is empty until you fill it.
-- It does not act on a screen you are using. The live surface is only used when the device is idle.
+- It does not work in the background forever. A run has a wall-clock budget, and it ends when that runs out. The thermal and battery guards are specified and not wired: nothing in the build reads the device's temperature or its charge, so a hot phone does not slow the agent down and a flat battery does not pause it. `AGENTS.md` §2 says so in the quota table, and `TASK.md` §M15 carries the item.
+- It does not act on a screen you are using. The live surface is only used when the device is idle, and the gate is checked before every gesture.
+- It cannot finish a step yet, because nothing can populate the package allowlist. The check is real and it runs before every action: `AgentEnvironment.perform` builds a `SurfaceRequest` and `SurfaceSelection.denialFor` refuses any package that is not on the list. What is missing is the list. `AgentEnvironment`'s `allowlist` is a supplier that defaults to the empty set, `AgentRuntimeFactory.environment()` builds the environment without passing one, and no screen lets you name a package — so every action is refused with *"the package … is not on the allowlist"*. It fails closed, which is the right direction, and it means the first successful run needs this control before anything else. `TASK.md` §M15 carries it as the blocking item. `AGENTS.md` I4's approval gates are not a substitute: a step denied by the surface policy never reaches a gate.
 - It does not write its own code, and it does not execute code it wrote on a previous run.
 
 ---
@@ -151,7 +153,7 @@ The console shows all of them live. The quota report is in `workspace/quota-repo
 |---|---|---|
 | "the accessibility service is not enabled" | The service was revoked, or never enabled | Settings → Accessibility → LUMEN |
 | The run pauses with "the device is in use" | You were touching the phone | Stop touching it, or take over deliberately |
-| "the package is not on the allowlist" | The app was never allowed | Add it in the console before the run |
+| "the package is not on the allowlist" | Nothing can populate the allowlist yet — every action gets this | Expected until `TASK.md` §M15's allowlist control lands; no run can complete a step |
 | "the runtime reached the hard step limit" | The goal was harder than the plan | Raise the limit, or narrow the goal |
 | "the brain is pinned to local, and no local model is installed" | The pin is LOCAL and nothing is installed | Install a model, or set the pin to AUTO |
-| Nothing on screen, but the notification is there | The indicator is Mode C, or the service was revoked | Check the indicator mode; check the service |
+| Nothing on screen, but the notification is there | The indicator is set to *Off* (Mode C) in Console → Settings, or the service was revoked | Set the mode back to the edge glow; check the service |

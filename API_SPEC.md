@@ -63,6 +63,7 @@ interface IAgentRuntime {
     void abortRun(String runId, String reason);
     void answerApproval(String runId, String approvalId, int decision, String answerText);
     void setBrainPin(String runId, int pin);   // 0 = AUTO, 1 = LOCAL, 2 = CLOUD
+    void applyDeviceSettings(in DeviceSettings settings); // indicator, idle window, reporting
     void setTakeover(String runId, boolean takenOver);
 
     // --- observation ---
@@ -91,7 +92,7 @@ interface IFrameCallback {
 
 ### 2.1 Payloads
 
-**What ships.** The interface above is the contract; the AIDL in `android/agent/src/main/aidl/dev/lumen/agent/ipc/IAgentRuntime.aidl` carries the same operations with the payloads as JSON strings — `String startGoal(String goalJson)`, `String getState(String runId)`, `String getBudget(String runId)`, and `oneway void onStateChanged(String stateJson)` on `IAgentStateCallback`. The enums the sketch passes as `int` arrive as words instead: `answerApproval(runId, approvalId, decision, answerText)` takes `"APPROVE"`, `"DENY"` or `"ANSWER"`, and `setBrainPin(runId, pin)` takes `"AUTO"`, `"LOCAL"` or `"CLOUD"`. An unrecognised word is not an error at the boundary: a `brainPin` that is not one of the three parses to `AUTO`, and a decision that is not `APPROVE` or `DENY` is carried as `ANSWER` text — because a console that is older or newer than the runtime must not be able to wedge a live run. The reason for the string wire is the same one the accessibility bridge uses: the model types are already `@Serializable`, and a JSON payload keeps the interface free of a Parcelable per type that would have to be hand-kept in step with `:core:model`. Every JSON payload is the shape below, with `enum` fields sent as their `name` and unknown keys ignored on read, so an added field never breaks an older console. The two approval messages of the sketch — `approval.requested` and `approval.resolved` — are one AIDL message carrying a `state`: `PENDING` is the gate opening, and any other value on the same `approvalId` is the runtime saying the gate closed without this viewer's answer, which is what lets a console drop a card it can no longer act on.
+**What ships.** The interface above is the contract; the AIDL in `android/agent/src/main/aidl/dev/lumen/agent/ipc/IAgentRuntime.aidl` carries the same operations with the payloads as JSON strings — `String startGoal(String goalJson)`, `String getState(String runId)`, `String getBudget(String runId)`, `void applyDeviceSettings(String settingsJson)` — the one control call that names no `runId`, since its three values are properties of the device rather than of a run — and `oneway void onStateChanged(String stateJson)` on `IAgentStateCallback`. The enums the sketch passes as `int` arrive as words instead: `answerApproval(runId, approvalId, decision, answerText)` takes `"APPROVE"`, `"DENY"` or `"ANSWER"`, and `setBrainPin(runId, pin)` takes `"AUTO"`, `"LOCAL"` or `"CLOUD"`. An unrecognised word is not an error at the boundary: a `brainPin` that is not one of the three parses to `AUTO`, a decision that is not `APPROVE` or `DENY` is carried as `ANSWER` text, and an `indicatorMode` that is not one of `EDGE_GLOW`/`STATUS_DOT`/`OFF` parses to `EDGE_GLOW` — because a console that is older or newer than the runtime must not be able to wedge a live run, and a word that names no indicator must not be able to turn the one signal that says *the agent is acting* off. The reason for the string wire is the same one the accessibility bridge uses: the model types are already `@Serializable`, and a JSON payload keeps the interface free of a Parcelable per type that would have to be hand-kept in step with `:core:model`. Every JSON payload is the shape below, with `enum` fields sent as their `name` and unknown keys ignored on read, so an added field never breaks an older console. The two approval messages of the sketch — `approval.requested` and `approval.resolved` — are one AIDL message carrying a `state`: `PENDING` is the gate opening, and any other value on the same `approvalId` is the runtime saying the gate closed without this viewer's answer, which is what lets a console drop a card it can no longer act on.
 
 ```kotlin
 // StartGoalRequest — what `startGoal` carries
@@ -119,6 +120,19 @@ data class BrainConfig(
 The brain configuration travels **with the goal** rather than being read from a settings file in the runtime process: the two processes share no cache (only the wire), a run has to be auditable against the endpoint and the consent it was started with, and the consent is the user's decision for one run, not a process-wide default. `screenTextEgress` is the `I11` answer for that run — with it off, `ContentEgressGuard` denies `SCREEN_TEXT` and a run that needs to read the screen fails at the first step rather than sending it. The key is never logged and never leaves for any other host.
 
 A run whose `BrainConfig` has no endpoint, no key or no model id does not start: the facade publishes `FAILED` with `lastError.code = brain_unavailable` and the reason the console has to be configured, instead of dispatching a step that cannot be planned.
+
+```kotlin
+// DeviceSettings — what `applyDeviceSettings` carries
+data class DeviceSettings(
+    val indicatorMode: String = "EDGE_GLOW",  // EDGE_GLOW | STATUS_DOT | OFF
+    val idleWindowMs: Long = 60_000,          // the I3 wait before a live-surface action
+    val crashReporting: Boolean = false,
+)
+```
+
+These three are the settings the console owns and the runtime acts on, and they cross the wire for the same reason the brain configuration does: the two processes hold no settings file in common. The console saves them, sends them on every bind — including the bind after the runtime process died — and sends them again on every change, so the device is never running with a value the screen does not show. The pin and the screen-text consent are deliberately **not** in this payload: they belong to a run, so they travel with the goal and the run stays auditable against the configuration it was planned with, while an idle window is the number the *next* decision is measured against whoever made the run.
+
+`idleWindowMs` is a floor-clamped value, not a trusted constant: the holder refuses anything under five seconds, so a setting that arrives as `0` still keeps the agent off a screen the user touched a moment ago (`I3`). A payload that does not parse is dropped in the log and nothing is changed — a half-read window must not become the gate's number.
 
 ```kotlin
 

@@ -99,14 +99,14 @@ public class CloudBrain(
 
     override suspend fun plan(request: PlanRequest): BrainReply {
         val prompt = planPrompt(request)
-        val reply = call(prompt, "You are planning a mobile automation task. Reply with the plan envelope.")
-        return parsePlan(reply)
+        val (reply, usage) = call(prompt, "You are planning a mobile automation task. Reply with the plan envelope.")
+        return parsePlan(reply, usage)
     }
 
     override suspend fun replan(request: ReplanRequest): BrainReply {
         val prompt = replanPrompt(request)
-        val reply = call(prompt, "The previous step failed. Reply with a revised plan envelope.")
-        return parsePlan(reply)
+        val (reply, usage) = call(prompt, "The previous step failed. Reply with a revised plan envelope.")
+        return parsePlan(reply, usage)
     }
 
     override suspend fun critique(request: CritiqueRequest): Critique {
@@ -121,7 +121,7 @@ public class CloudBrain(
      * The prompt is checked for screen content before it is sent, and the
      * call is retried by the policy rather than by the caller.
      */
-    private suspend fun call(prompt: String, instruction: String): String {
+    private suspend fun call(prompt: String, instruction: String): Pair<String, Usage> {
         val body = buildJsonObject {
             put("model", JsonPrimitive(modelId))
             put("temperature", JsonPrimitive(temperature))
@@ -157,7 +157,7 @@ public class CloudBrain(
             }
 
             refusalFor(response.code)?.let { throw it }
-            extractContent(response.body)
+            extractContentAndUsage(response.body)
         }
     }
 
@@ -186,13 +186,22 @@ public class CloudBrain(
         else -> null
     }
 
-    /** The assistant's text from a chat completion. */
-    private fun extractContent(body: String): String {
+    /** The assistant's text and token usage from a chat completion. */
+    private fun extractContentAndUsage(body: String): Pair<String, Usage> {
         val parsed = parseReplyJson(body)
         val choices = (parsed["choices"] as? JsonArray).orMalformed("the brain reply had no choices")
         val message = ((choices.firstOrNull() as? JsonObject)?.get("message") as? JsonObject)
             .orMalformed("the brain reply had no message")
-        return (message["content"] as? JsonPrimitive).orMalformed("the brain reply had no content").content
+        val content = (message["content"] as? JsonPrimitive).orMalformed("the brain reply had no content").content
+
+        val usage = (parsed["usage"] as? JsonObject)?.let { usage ->
+            Usage(
+                promptTokens = (usage["prompt_tokens"] as? JsonPrimitive)?.content?.toInt() ?: 0,
+                completionTokens = (usage["completion_tokens"] as? JsonPrimitive)?.content?.toInt() ?: 0,
+            )
+        } ?: Usage()
+
+        return content to usage
     }
 
     /**
@@ -213,7 +222,7 @@ public class CloudBrain(
     private inline fun <T> T?.orMalformed(message: String): T = this ?: throw MalformedBrainReply(message)
 
     /** Turns a plan reply into steps, or fails. */
-    internal fun parsePlan(reply: String): BrainReply {
+    internal fun parsePlan(reply: String, usage: Usage = Usage()): BrainReply {
         val envelope = try {
             json.decodeFromString(PlanReply.serializer(), reply)
         } catch (error: SerializationException) {
@@ -239,6 +248,8 @@ public class CloudBrain(
             thought = envelope.thought,
             steps = steps,
             raw = reply,
+            promptTokens = usage.promptTokens,
+            completionTokens = usage.completionTokens,
         )
     }
 

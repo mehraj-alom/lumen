@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,9 @@ class MainActivity : ComponentActivity() {
     /** Whether the disclosure has been read. Written once, and persisted. */
     private var acknowledged by mutableStateOf(false)
 
+    /** Which of the two views of the connection is on the screen. Not persisted. */
+    private var showingSettings by mutableStateOf(false)
+
     private val askForNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) {
             // The run does not need the notification; only the user's ability to
@@ -80,35 +84,65 @@ class MainActivity : ComponentActivity() {
                             onSave = { connection.saveBrain(it) },
                         )
 
-                        else -> {
-                            // The bind belongs to this branch rather than only to
-                            // `onResume`: the user arrives here by saving an
-                            // endpoint, not by leaving the app and coming back,
-                            // and a console that never bound to `:agent` swallows
-                            // every goal typed into it.
-                            LaunchedEffect(Unit) { connection.connect() }
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                // The service being off is a fact about the device
-                                // the user can still change, and the way to change
-                                // it is one tap from the screen they are on. It is
-                                // not a reason to hide the console: an app that
-                                // answers a granted permission with a page of
-                                // instructions is an app that cannot be used.
-                                if (!grounded) {
-                                    GroundingNotice(onEnable = { openAccessibilitySettings() })
-                                }
-                                LumenConsole(
-                                    state = connection.state,
-                                    onStart = { connection.start(it) },
-                                    onApprove = { connection.decide(it, approve = true) },
-                                    onDeny = { connection.decide(it, approve = false) },
-                                    onStop = { connection.abort() },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                        }
+                        else -> ConsoleHost(connection, grounded)
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * The console, and the settings over it.
+     *
+     * The screen the user is looking at is one of two, and both are hosted here
+     * rather than by a navigation graph: the console and the settings are the two
+     * views of one connection, and a stack that can hold a third screen is a
+     * thing to keep correct for no reason.
+     *
+     * The bind belongs to this branch rather than only to `onResume`: the user
+     * arrives here by saving an endpoint, not by leaving the app and coming back,
+     * and a console that never bound to `:agent` swallows every goal typed into it.
+     */
+    @Composable
+    private fun ConsoleHost(connection: AgentConnection, grounded: Boolean) {
+        LaunchedEffect(Unit) { connection.connect() }
+        Column(modifier = Modifier.fillMaxSize()) {
+            // The service being off is a fact about the device the user can still
+            // change, and the way to change it is one tap from the screen they are
+            // on. It is not a reason to hide the console: an app that answers a
+            // granted permission with a page of instructions is an app that cannot
+            // be used.
+            if (!grounded) {
+                GroundingNotice(onEnable = { openAccessibilitySettings() })
+            }
+
+            // Every change is written through the connection, which saves it,
+            // sends it to the runtime and asks for it again on the next bind. A
+            // control that only moved this screen would be a control that does
+            // nothing.
+            val update = { next: SettingsState -> connection.applySettings(next) }
+            if (showingSettings) {
+                SettingsScreen(
+                    state = connection.deviceSettings,
+                    onIndicatorMode = { update(connection.deviceSettings.copy(indicatorMode = it)) },
+                    onBrainPin = { update(connection.deviceSettings.copy(brainPin = it)) },
+                    onScreenTextEgress = { update(connection.deviceSettings.copy(spectatingEnabled = it)) },
+                    onCrashReporting = { update(connection.deviceSettings.copy(crashReportingEnabled = it)) },
+                    onIdleWindow = { update(connection.deviceSettings.copy(idleWindowSeconds = it)) },
+                    onDone = { showingSettings = false },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                LumenConsole(
+                    state = connection.state,
+                    onStart = { goal, packages -> connection.setAllowedPackages(packages); connection.start(goal) },
+                    onApprove = { connection.decide(it, approve = true) },
+                    onDeny = { connection.decide(it, approve = false) },
+                    onStop = { connection.abort() },
+                    onTakeover = { connection.takeover(it) },
+                    onOpenSettings = { showingSettings = true },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }

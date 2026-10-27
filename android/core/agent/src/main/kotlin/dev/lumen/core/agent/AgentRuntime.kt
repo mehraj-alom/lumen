@@ -52,6 +52,12 @@ public class AgentRuntime(
     private val config: RunConfig = RunConfig(),
     private val abort: AbortSignal = AbortSignal(),
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Returns a failure reason if the battery forbids starting, or null. */
+    private val batteryCheck: () -> String? = { null },
+    /** Returns a failure reason if the thermal state forbids continuing, or null. */
+    private val thermalCheck: () -> String? = { null },
+    /** Called with every brain reply, so the runtime's owner can account its cost. */
+    private val onBrainReply: (BrainReply) -> Unit = {},
 ) {
 
     private val device = DeviceActionExecutor(environment)
@@ -69,7 +75,9 @@ public class AgentRuntime(
             plan = store.loadPlan(goal.id) ?: createPlan(goal),
             observation = environment.observe(),
         )
-
+        batteryCheck()?.let {
+            return RunOutcome.Failed(it, state.stepsExecuted)
+        }
         while (true) {
             val finished = advance(state)
             if (finished != null) return finished
@@ -85,6 +93,10 @@ public class AgentRuntime(
     private suspend fun advance(state: RunState): RunOutcome? {
         if (abort.isAborted) return RunOutcome.Aborted(state.stepsExecuted)
 
+        thermalCheck()?.let {
+            return RunOutcome.Failed(it, state.stepsExecuted)
+        }
+
         checkBudget(state.startedAt, state.stepsExecuted)?.let { return it }
 
         val step = nextStep(state.plan)
@@ -97,17 +109,20 @@ public class AgentRuntime(
                 state.stepsExecuted++
                 state.observation = result.observation
                 state.plan = result.plan
+                reportOutcome(state, step, result)
                 null
             }
 
             is StepResult.Finished -> {
                 state.stepsExecuted++
+                reportOutcome(state, step, result)
                 RunOutcome.Completed(result.summary, state.stepsExecuted)
             }
 
             is StepResult.NeedsReplan -> {
                 state.stepsExecuted++
                 state.observation = result.observation
+                reportOutcome(state, step, result)
                 if (state.replans >= config.maxReplans) {
                     RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
                 } else {
@@ -117,10 +132,40 @@ public class AgentRuntime(
                 }
             }
 
-            is StepResult.Failed -> RunOutcome.Failed(result.reason, state.stepsExecuted)
+            is StepResult.Failed -> {
+                reportOutcome(state, step, result)
+                RunOutcome.Failed(result.reason, state.stepsExecuted)
+            }
 
             StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
         }
+    }
+
+    /**
+     * Tells the watcher how a step finished, so the console's step event carries
+     * the step id, risk class, target app and duration rather than only the
+     * intent the loop chose before dispatching.
+     */
+    private suspend fun reportOutcome(state: RunState, step: Step, result: StepResult) {
+        val durationMs = clock() - state.stepStartedAt.coerceAtLeast(0L)
+        val app = when (result) {
+            is StepResult.Completed -> result.observation?.app
+            is StepResult.NeedsReplan -> result.observation?.app
+            else -> null
+        } ?: ""
+        progress.onStep(
+            StepProgress(
+                stepIndex = state.stepsExecuted,
+                totalSteps = state.plan.steps.size,
+                planVersion = step.planVersion,
+                intent = step.intent,
+                reason = step.reason.text,
+                stepId = step.id.value,
+                riskClass = step.riskClass.name,
+                app = app,
+                durationMs = durationMs,
+            ),
+        )
     }
 
     /**
@@ -133,6 +178,7 @@ public class AgentRuntime(
      * has no use for a progress report it had to swallow.
      */
     private fun report(state: RunState, step: Step) {
+        state.stepStartedAt = clock()
         progress.onStep(
             StepProgress(
                 stepIndex = state.stepsExecuted + 1,
@@ -140,6 +186,15 @@ public class AgentRuntime(
                 planVersion = step.planVersion,
                 intent = step.intent,
                 reason = step.reason.text,
+                plan = state.plan.steps.map { s ->
+                    PlanNode(
+                        stepId = s.id.value,
+                        intent = s.intent,
+                        state = s.state.name,
+                        active = s.id == step.id,
+                        riskClass = s.riskClass.name,
+                    )
+                },
             ),
         )
     }
@@ -184,6 +239,7 @@ public class AgentRuntime(
                 remainingSteps = config.stepsHardLimit,
             ),
         )
+        onBrainReply(reply)
         val plan = reply.toPlan(goal.id, ids, clock())
         store.savePlan(plan)
         return plan
@@ -203,6 +259,7 @@ public class AgentRuntime(
                 remainingSteps = config.stepsHardLimit,
             ),
         )
+        onBrainReply(reply)
         val plan = reply.toPlan(goal.id, ids, clock(), previous.version)
         store.savePlan(plan)
         return plan
@@ -281,7 +338,7 @@ public class AgentRuntime(
             ),
         )
 
-        val result = executor.dispatch(step.action)
+        val result = executor.dispatch(step.action, config.allowedPackages)
         if (!result.ok) {
             val reason = result.error?.message ?: "the action failed"
             withState(plan, step, StepState.FAILED)
@@ -414,6 +471,7 @@ public class AgentRuntime(
     private class RunState(val goal: Goal, val startedAt: Long, var plan: Plan, var observation: Observation?) {
         var stepsExecuted: Int = 0
         var replans: Int = 0
+        var stepStartedAt: Long = 0L
     }
 }
 

@@ -1,22 +1,28 @@
 package dev.lumen.agent.service
 
 import android.util.Log
+import dev.lumen.agent.crash.CrashReporter
 import dev.lumen.agent.ipc.ApprovalPayload
 import dev.lumen.agent.ipc.BudgetPayload
+import dev.lumen.agent.ipc.DeviceSettingsPayload
 import dev.lumen.agent.ipc.GoalPayload
 import dev.lumen.agent.ipc.Payloads
 import dev.lumen.agent.ipc.PreviewPayload
 import dev.lumen.core.action.ActionLedger
 import dev.lumen.core.agent.AgentRuntime
 import dev.lumen.core.agent.ApprovalSignal
+import dev.lumen.core.agent.IndicatorMode
 import dev.lumen.core.agent.IndicatorState
 import dev.lumen.core.agent.RunConfig
 import dev.lumen.core.agent.RunProgress
 import dev.lumen.core.agent.RunState
 import dev.lumen.core.agent.StepEnvironment
 import dev.lumen.core.agent.StepProgress
+import dev.lumen.core.agent.toIndicatorMode
 import dev.lumen.core.brain.BrainConfig
 import dev.lumen.core.brain.BrainFactory
+import dev.lumen.core.brain.BrainReply
+import dev.lumen.core.brain.PriceTable
 import dev.lumen.core.model.ApiError
 import dev.lumen.core.model.ApprovalId
 import dev.lumen.core.model.ApprovalState
@@ -31,10 +37,17 @@ import dev.lumen.core.model.UlidGenerator
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.ApprovalDecision
 import dev.lumen.core.policy.PolicyEngine
+import dev.lumen.core.quota.BatteryDecision
+import dev.lumen.core.quota.BatteryGovernor
+import dev.lumen.core.quota.BatteryProbe
+import dev.lumen.core.quota.GovernorDecision
 import dev.lumen.core.quota.QuotaWatchdog
+import dev.lumen.core.quota.ThermalGovernor
+import dev.lumen.core.quota.ThermalProbe
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
+import dev.lumen.platform.idle.IdleWindow
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +72,14 @@ public class AgentRuntimeFacade(
     private val quota: QuotaWatchdog,
     private val storage: StorageQuota,
     private val indicator: AccessibilityBridgeClient,
+    private val crashes: CrashReporter,
+    private val idleWindow: IdleWindow,
+    private val thermalProbe: ThermalProbe,
+    private val batteryProbe: BatteryProbe,
+    private val thermalGovernor: ThermalGovernor,
+    private val batteryGovernor: BatteryGovernor,
+    private val priceTable: PriceTable = PriceTable.Empty,
+    private val framePipeline: FramePipeline,
     private val clock: LumenClock = SystemLumenClock,
 ) {
 
@@ -83,6 +104,21 @@ public class AgentRuntimeFacade(
     @Volatile
     private var state: RunState = RunState(runId = "")
     private var takeoverActive = false
+
+    /** The cost of the live run, in micros, accumulated from brain replies. */
+    @Volatile
+    private var runCostMicros: Long = 0L
+
+    /**
+     * The indicator mode the user chose for this device.
+     *
+     * It is held here rather than in the run state because a run does not own
+     * it: the mode is the same for every run, and a run that is started after
+     * the setting changes has to light the indicator the user asked for.
+     */
+    @Volatile
+    private var preferredIndicatorMode: IndicatorMode = IndicatorMode.EDGE_GLOW
+
     private var runStartedAtMs = 0L
     private var runEndedAtMs = 0L
 
@@ -135,14 +171,17 @@ public class AgentRuntimeFacade(
         takeoverActive = false
         runStartedAtMs = clock.nowMs()
         runEndedAtMs = 0L
+        runCostMicros = 0L
         val goal = Payloads.goal(payload)
         val config = Payloads.brainConfig(payload)
+        val modelId = config.modelId
         publish(
             RunState(
                 runId = payload.runId,
                 phase = Phase.PLANNING,
                 currentIntent = goal.text,
                 indicatorState = IndicatorState.WORKING,
+                indicatorMode = preferredIndicatorMode,
                 brainRoute = goal.constraints.brainPin.name,
             ),
         )
@@ -154,6 +193,19 @@ public class AgentRuntimeFacade(
                     indicatorState = IndicatorState.ERROR,
                     currentReason = NO_BRAIN_MESSAGE,
                     lastError = ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = NO_BRAIN_MESSAGE),
+                ),
+            )
+            return
+        }
+
+        val battery = batteryGovernor.decide(batteryProbe.read())
+        if (battery is BatteryDecision.Suspend) {
+            publish(
+                state.copy(
+                    phase = Phase.FAILED,
+                    indicatorState = IndicatorState.ERROR,
+                    currentReason = battery.reason,
+                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = battery.reason),
                 ),
             )
             return
@@ -208,6 +260,22 @@ public class AgentRuntimeFacade(
             abort = abort,
             clock = { clock.nowMs() },
             config = runConfig(goal.constraints),
+            batteryCheck = {
+                val decision = batteryGovernor.decide(batteryProbe.read())
+                if (decision is BatteryDecision.Suspend) decision.reason else null
+            },
+            thermalCheck = {
+                val decision = thermalGovernor.decide(thermalProbe.read())
+                if (!decision.localInferenceAllowed) decision.reason else null
+            },
+            onBrainReply = { reply ->
+                val cost = priceTable.costMicros(
+                    modelId = modelId,
+                    promptTokens = reply.promptTokens,
+                    completionTokens = reply.completionTokens,
+                )
+                if (cost != null) runCostMicros += cost
+            },
         )
         return try {
             runtime.run(goal)
@@ -247,8 +315,46 @@ public class AgentRuntimeFacade(
                 planVersion = step.planVersion,
                 currentIntent = step.intent,
                 currentReason = step.reason,
+                plan = step.plan.map { node ->
+                    dev.lumen.core.agent.PlanNode(
+                        stepId = node.stepId,
+                        intent = node.intent,
+                        state = node.state,
+                        active = node.active,
+                        riskClass = node.riskClass,
+                    )
+                },
             ),
         )
+        if (step.stepId != null) {
+            service?.publishEvent(
+                type = "step.${step.intent.lowercase().replace(" ", "_")}",
+                runId = current.runId,
+                stepId = step.stepId,
+                intent = step.intent,
+                riskClass = step.riskClass,
+                app = step.app,
+                durationMs = step.durationMs,
+                reason = step.reason,
+            )
+            // Capture a frame after the step settles and publish its path so
+            // the console can show what the screen looked like. The capture is
+            // best effort: a frame that cannot be taken is simply not
+            // published, and a dropped frame is not retried.
+            scope.launch {
+                val path = indicator.captureScreen() ?: return@launch
+                val bytes = try {
+                    java.io.File(path).readBytes()
+                } catch (error: Exception) {
+                    return@launch
+                }
+                val runId = dev.lumen.core.model.RunId(current.runId)
+                val stored = framePipeline.store(runId, bytes)
+                if (stored != null) {
+                    service?.publishFrame(stored.toRelativePath(), 0, 0)
+                }
+            }
+        }
     }
 
     /** The limits the loop runs under, from the goal that arrived. */
@@ -257,6 +363,7 @@ public class AgentRuntimeFacade(
         stepsHardLimit = constraints.stepsHardLimit,
         wallClockLimitMs = constraints.wallClockLimitMs,
         costLimitMicros = constraints.costLimitMicros,
+        allowedPackages = constraints.allowedPackages,
     )
 
     /** What the run has to say for itself, in the console's words. */
@@ -348,6 +455,52 @@ public class AgentRuntimeFacade(
         publish(state.copy(brainRoute = pin.uppercase()))
     }
 
+    /**
+     * Applies the settings the console owns.
+     *
+     * Each of the three has somewhere it lands: the idle window is the number
+     * the gate measures the next decision against (`I3`), the flag is the only
+     * thing that lets [CrashReporter] write at all, and the indicator mode is
+     * both relit for the surface the user is looking at and remembered for the
+     * next run. A setting that arrives and changes nothing is a control that
+     * lies, so this is the one place all three are honoured.
+     */
+    public fun applyDeviceSettings(payload: DeviceSettingsPayload) {
+        idleWindow.ms = payload.idleWindowMs
+        crashes.enabled = payload.crashReporting
+
+        val mode = payload.indicatorMode.toIndicatorMode()
+        if (mode == preferredIndicatorMode) return
+        preferredIndicatorMode = mode
+        // The state is written here rather than through publish: publish stamps
+        // the moment a terminal run ended, and a setting changed an hour after a
+        // run finished would move that moment and report a longer run than there
+        // was. The indicator and the console still get the new mode.
+        val next = state.copy(indicatorMode = mode)
+        state = next
+        lightIndicator(next)
+        service?.publishState(next)
+    }
+
+    /**
+     * Makes the reporter this process's last resort.
+     *
+     * Installed on the service's own creation, because a runtime that dies on a
+     * step it could not recover from otherwise dies with no record at all: the
+     * reporter was built, tested and never called. The platform's previous handler
+     * is still chained, so writing a report does not change how the process ends —
+     * the handler observes the death rather than preventing it. Nothing is written
+     * while the user keeps reporting off, which is the same shape as `I4`: the
+     * record exists only because the user said it may.
+     */
+    public fun installCrashReporting() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            crashes.record(error, thread.name)
+            previous?.uncaughtException(thread, error)
+        }
+    }
+
     /** Takes the run over, or gives it back. */
     public fun setTakeover(runId: String, takenOver: Boolean) {
         // The takeover is honoured whatever runId arrives: `I12` puts the user
@@ -389,11 +542,10 @@ public class AgentRuntimeFacade(
             stepsHardLimit = 400,
             elapsedMs = elapsedMs(),
             wallClockLimitMs = 45L * 60L * 1000L,
-            // There is no cost to report yet. `BrainReply` carries prompt and
-            // completion token counts, but nothing adds up what they are worth,
-            // so a figure here would be an invention rather than a measurement.
-            costMicros = 0L,
+            costMicros = runCostMicros,
             costLimitMicros = 0L,
+            thermalStatus = thermalStatus(thermalProbe.read()),
+            batteryPercent = batteryProbe.read().levelPercent,
         )
     }
 
@@ -407,6 +559,18 @@ public class AgentRuntimeFacade(
         if (runStartedAtMs == 0L) return 0L
         val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
         return (now - runStartedAtMs).coerceAtLeast(0L)
+    }
+
+    private fun thermalStatus(reading: dev.lumen.core.quota.ThermalReading): String {
+        return when (reading.status) {
+            dev.lumen.core.quota.ThermalStatus.NONE -> "NONE"
+            dev.lumen.core.quota.ThermalStatus.LIGHT -> "LIGHT"
+            dev.lumen.core.quota.ThermalStatus.MODERATE -> "MODERATE"
+            dev.lumen.core.quota.ThermalStatus.SEVERE -> "SEVERE"
+            dev.lumen.core.quota.ThermalStatus.CRITICAL -> "CRITICAL"
+            dev.lumen.core.quota.ThermalStatus.EMERGENCY -> "EMERGENCY"
+            dev.lumen.core.quota.ThermalStatus.SHUTDOWN -> "SHUTDOWN"
+        }
     }
 
     /**

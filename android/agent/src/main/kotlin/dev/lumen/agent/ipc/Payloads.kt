@@ -3,6 +3,7 @@ package dev.lumen.agent.ipc
 import dev.lumen.core.brain.BrainConfig
 import dev.lumen.core.model.BrainPin
 import dev.lumen.core.model.Goal
+import dev.lumen.platform.idle.IdleGate
 import kotlinx.serialization.Serializable
 
 /**
@@ -12,6 +13,16 @@ import kotlinx.serialization.Serializable
  * are the same payloads, serialised, so that the AIDL interface does not
  * have to carry a Parcelable for every one of them.
  */
+
+/** One node of the plan graph, in its wire form. */
+@Serializable
+public data class PlanNodePayload(
+    val stepId: String,
+    val intent: String,
+    val state: String,
+    val active: Boolean = false,
+    val riskClass: String = "NONE",
+)
 
 /** The state of a run. */
 @Serializable
@@ -28,6 +39,7 @@ public data class AgentStatePayload(
     val brainRoute: String = "AUTO",
     val takeoverActive: Boolean = false,
     val lastError: ErrorPayload? = null,
+    val plan: List<PlanNodePayload> = emptyList(),
 )
 
 /** A failure, in its wire form. */
@@ -121,6 +133,27 @@ public data class BrainConfigPayload(
 /** The default wall-clock ceiling of a run: 45 minutes, per `AGENTS.md` §2. */
 private const val DEFAULT_WALL_CLOCK_LIMIT_MS: Long = 45L * 60L * 1000L
 
+/**
+ * The device settings the console owns and the runtime acts on.
+ *
+ * Three decisions, each with its effect on the far side of the wire: the
+ * indicator the user sees while a run works, how long the device must be
+ * untouched before the agent takes the live screen (`I3`), and whether a crash
+ * of the runtime process is written into the sandbox at all.
+ *
+ * The brain pin is deliberately absent: it belongs to a run, so it travels with
+ * the goal and the run stays auditable against the pin it was planned with.
+ * These three are properties of the device rather than of a run, and the idle
+ * window in particular is the number the *next* decision is measured against,
+ * whoever made the run.
+ */
+@Serializable
+public data class DeviceSettingsPayload(
+    val indicatorMode: String = "EDGE_GLOW",
+    val idleWindowMs: Long = IdleGate.DEFAULT_IDLE_WINDOW_MS,
+    val crashReporting: Boolean = false,
+)
+
 /** The goal a run is started from, in its wire form. */
 @Serializable
 public data class GoalPayload(
@@ -153,6 +186,15 @@ public object Payloads {
         takeoverActive = state.takeoverActive,
         lastError = state.lastError?.let {
             ErrorPayload(it.code.name.lowercase(), it.message)
+        },
+        plan = state.plan.map { node ->
+            PlanNodePayload(
+                stepId = node.stepId,
+                intent = node.intent,
+                state = node.state,
+                active = node.active,
+                riskClass = node.riskClass,
+            )
         },
     )
 

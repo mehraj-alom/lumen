@@ -1,6 +1,10 @@
 package dev.lumen.agent
 
 import android.content.Context
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.PowerManager
+import dev.lumen.agent.crash.CrashReporter
 import dev.lumen.agent.service.AgentRuntimeFacade
 import dev.lumen.core.action.ActionLedger
 import dev.lumen.core.brain.BrainConfig
@@ -11,14 +15,24 @@ import dev.lumen.core.brain.CloudBrain
 import dev.lumen.core.brain.HttpResponse
 import dev.lumen.core.brain.HttpTransport
 import dev.lumen.core.brain.LocalModelGate
+import dev.lumen.core.brain.PriceTable
 import dev.lumen.core.model.LumenClock
 import dev.lumen.core.model.SystemLumenClock
 import dev.lumen.core.policy.ApprovalBroker
 import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.protocol.ContentEgressGuard
+import dev.lumen.core.quota.BatteryDecision
+import dev.lumen.core.quota.BatteryGovernor
+import dev.lumen.core.quota.BatteryProbe
+import dev.lumen.core.quota.BatteryReading
+import dev.lumen.core.quota.GovernorDecision
 import dev.lumen.core.quota.MemoryProbe
 import dev.lumen.core.quota.QuotaWatchdog
 import dev.lumen.core.quota.RamBudget
+import dev.lumen.core.quota.ThermalGovernor
+import dev.lumen.core.quota.ThermalProbe
+import dev.lumen.core.quota.ThermalReading
+import dev.lumen.core.quota.ThermalStatus
 import dev.lumen.core.sandbox.SandboxRoot
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.sandbox.WorkspaceManager
@@ -29,6 +43,7 @@ import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.accessibility.UiEventTracker
 import dev.lumen.platform.idle.IdleGate
+import dev.lumen.platform.idle.IdleWindow
 import dev.lumen.platform.idle.PlatformScreenState
 import dev.lumen.platform.idle.TouchObserver
 import dev.lumen.platform.virtualdisplay.VirtualDisplayManager
@@ -56,16 +71,44 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
      */
     private val transport: HttpTransport by lazy { OkHttpTransport() }
 
+    /** The one storage accounting of this process. */
+    private val storage: StorageQuota = StorageQuota()
+
+    /** The one workspace of this process, holding [storage]. */
+    private val sandbox: WorkspaceManager by lazy { WorkspaceManager(sandboxRoot(), storage, clock) }
+
+    /** The idle window the gate measures against, and the one the settings screen moves. */
+    private val idleWindow: IdleWindow = IdleWindow()
+
     /** The sandbox root: the app-scoped directory everything lives in. */
     public fun sandboxRoot(): SandboxRoot = SandboxRoot(
         java.io.File(context.filesDir, SANDBOX_DIRECTORY),
     )
 
-    /** The storage accounting for the sandbox. */
-    public fun storageQuota(): StorageQuota = StorageQuota()
+    /**
+     * The storage accounting for the sandbox.
+     *
+     * One instance per process, because it is the thing that decides whether a
+     * write fits. A second copy would count only its own bytes, and the cap in
+     * `AGENTS.md` §2 would become a sum of two under-counters — which is `I10`
+     * said as a number rather than a wish.
+     */
+    public fun storageQuota(): StorageQuota = storage
 
     /** The only way to read or write a file. */
-    public fun workspace(root: SandboxRoot, quota: StorageQuota): WorkspaceManager = WorkspaceManager(root, quota, clock)
+    public fun workspace(): WorkspaceManager = sandbox
+
+    /**
+     * The crash reporter for this process.
+     *
+     * It writes through the same workspace as the ledger, so a report is
+     * accounted against the `traces/` bucket like anything else the runtime
+     * puts on the device, and it is inert until the user turns reporting on.
+     * The version it stamps is the reporter's own default, which is the
+     * `versionName` in `app/build.gradle.kts`; the two move together at a
+     * release, in `RELEASE.md`.
+     */
+    public fun crashReporter(): CrashReporter = CrashReporter(workspace())
 
     /** The encrypted state store. */
     public fun store(): RoomStateStore {
@@ -94,6 +137,38 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
         budget = RamBudget(),
         probe = MemoryProbe { platformMemoryMiB() },
     )
+
+    /** Reads the device's thermal state from the platform. */
+    public fun thermalProbe(): ThermalProbe = ThermalProbe {
+        val manager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val status = manager.currentThermalStatus
+        ThermalReading(
+            temperatureCelsius = thermalCelsius(status),
+            status = thermalStatus(status),
+        )
+    }
+
+    /** Reads the device's battery state from the platform. */
+    public fun batteryProbe(): BatteryProbe = BatteryProbe {
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val intent = context.registerReceiver(null, filter) ?: return BatteryReading(0, false)
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+        val percent = if (level >= 0 && scale > 0) level * 100 / scale else 0
+        BatteryReading(levelPercent = percent, isCharging = isCharging)
+    }
+
+    /** The thermal governor: slows the agent when the device is hot. */
+    public fun thermalGovernor(): ThermalGovernor = ThermalGovernor()
+
+    /** The battery governor: suspends autonomous runs on low battery. */
+    public fun batteryGovernor(): BatteryGovernor = BatteryGovernor()
+
+    /** The frame pipeline: captures into the sandbox, publishes by path. */
+    public fun framePipeline(): FramePipeline = FramePipeline(workspace(), clock)
 
     /**
      * The brain for one run.
@@ -133,6 +208,7 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
         val gate = IdleGate(
             screenState = PlatformScreenState(context),
             touchObserver = touchObserver,
+            idleWindow = idleWindow,
         )
         return AgentEnvironment(
             bridge = bridge,
@@ -152,9 +228,8 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
      * user's decision for that run (`I11`).
      */
     public fun start(): AgentRuntimeFacade {
-        val root = sandboxRoot()
         val storage = storageQuota()
-        val workspace = workspace(root, storage)
+        val workspace = workspace()
         val store = store()
         val bridge = AccessibilityBridgeClient(context)
         bridge.connect()
@@ -169,7 +244,35 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
             quota = quota(),
             storage = storage,
             indicator = bridge,
+            crashes = crashReporter(),
+            idleWindow = idleWindow,
+            thermalProbe = thermalProbe(),
+            batteryProbe = batteryProbe(),
+            thermalGovernor = thermalGovernor(),
+            batteryGovernor = batteryGovernor(),
+            priceTable = PriceTable.Empty,
+            framePipeline = framePipeline(),
         )
+    }
+
+    private fun thermalCelsius(status: Int): Double = when (status) {
+        PowerManager.THERMAL_STATUS_LIGHT -> 38.0
+        PowerManager.THERMAL_STATUS_MODERATE -> 41.0
+        PowerManager.THERMAL_STATUS_SEVERE -> 44.0
+        PowerManager.THERMAL_STATUS_CRITICAL -> 47.0
+        PowerManager.THERMAL_STATUS_EMERGENCY -> 50.0
+        PowerManager.THERMAL_STATUS_SHUTDOWN -> 55.0
+        else -> 30.0
+    }
+
+    private fun thermalStatus(status: Int): ThermalStatus = when (status) {
+        PowerManager.THERMAL_STATUS_LIGHT -> ThermalStatus.LIGHT
+        PowerManager.THERMAL_STATUS_MODERATE -> ThermalStatus.MODERATE
+        PowerManager.THERMAL_STATUS_SEVERE -> ThermalStatus.SEVERE
+        PowerManager.THERMAL_STATUS_CRITICAL -> ThermalStatus.CRITICAL
+        PowerManager.THERMAL_STATUS_EMERGENCY -> ThermalStatus.EMERGENCY
+        PowerManager.THERMAL_STATUS_SHUTDOWN -> ThermalStatus.SHUTDOWN
+        else -> ThermalStatus.NONE
     }
 
     private fun platformMemoryMiB(): Int {

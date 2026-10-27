@@ -26,7 +26,6 @@ public class AgentEnvironment(
     private val virtualDisplay: VirtualDisplayManager,
     private val eventTracker: UiEventTracker,
     private val touchObserver: TouchObserver,
-    private val allowlist: () -> Set<String> = { emptySet() },
 ) : StepEnvironment {
 
     override suspend fun observe(): Observation? {
@@ -46,12 +45,12 @@ public class AgentEnvironment(
         if (known == null || last > known) touchObserver.onTouch(last)
     }
 
-    override suspend fun perform(action: Action): ActionResult {
+    override suspend fun perform(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
         refreshTouchSignal()
         val decision = SurfaceSelection.choose(
             request = SurfaceRequest(
                 packageName = foregroundPackage() ?: "",
-                allowlist = allowlist(),
+                allowlist = allowedPackages,
                 deviceIsIdle = idleGate.permitsLiveSurface().permitted,
                 idleWaitMs = idleGate.waitMs(),
                 virtualDisplayAvailable = virtualDisplay.openDisplayCount() > 0,

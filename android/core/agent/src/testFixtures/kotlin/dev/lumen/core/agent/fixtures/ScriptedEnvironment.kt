@@ -35,7 +35,7 @@ public class ScriptedEnvironment(private val screens: List<Observation> = emptyL
 
     override suspend fun observe(): Observation? = screens.getOrNull(index)
 
-    override suspend fun perform(action: Action): ActionResult {
+    override suspend fun perform(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
         performed += action
 
         if (failAt == performed.size) {

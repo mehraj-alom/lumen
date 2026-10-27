@@ -18,8 +18,10 @@ import kotlin.coroutines.cancellation.CancellationException
  * defeat all three.
  */
 public interface ActionExecutor {
-    /** Performs [action] and reports what happened. */
-    public suspend fun dispatch(action: Action): ActionResult
+    /** Performs [action] and reports what happened. [allowedPackages] is the set of
+     * packages the run is permitted to act on; the surface policy checks it before
+     * the idle gate, exactly once per dispatch. */
+    public suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult
 }
 
 /** The outcome of an action. */
@@ -236,7 +238,7 @@ public class LedgeredActionExecutor(
     private val entry: ActionLedgerEntry,
 ) : ActionExecutor {
 
-    override suspend fun dispatch(action: Action): ActionResult {
+    override suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
         val recorded = ledger.record(entry.copy(action = action))
 
         if (!recorded) {
@@ -247,6 +249,6 @@ public class LedgeredActionExecutor(
             )
         }
 
-        return delegate.dispatch(action)
+        return delegate.dispatch(action, allowedPackages)
     }
 }

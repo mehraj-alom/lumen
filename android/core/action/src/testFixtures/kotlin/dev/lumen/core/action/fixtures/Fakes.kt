@@ -25,7 +25,7 @@ public class FakeActionExecutor(private val observation: Observation? = null) : 
     /** The number of dispatches that were refused. */
     public var failureCount: Int = 0
 
-    override suspend fun dispatch(action: Action): ActionResult {
+    override suspend fun dispatch(action: Action, allowedPackages: Set<String> = emptySet()): ActionResult {
         dispatched += action
 
         val error = failure

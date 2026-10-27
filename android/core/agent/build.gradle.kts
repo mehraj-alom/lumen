@@ -20,7 +20,7 @@ dependencies {
     implementation(project(":core:brain"))
     implementation(project(":core:protocol"))
 
-    testFixturesApi(project(":core:model"))
+    testFixturesImplementation(project(":core:model"))
     testFixturesApi(project(":core:action"))
     testFixturesApi(project(":core:brain"))
     testFixturesImplementation(libs.kotlin.stdlib)
