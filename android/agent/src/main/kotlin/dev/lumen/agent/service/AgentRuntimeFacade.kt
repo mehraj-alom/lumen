@@ -39,7 +39,10 @@ import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.quota.BatteryDecision
 import dev.lumen.core.quota.BatteryGovernor
 import dev.lumen.core.quota.BatteryProbe
+import dev.lumen.core.quota.BatteryReading
+import dev.lumen.core.quota.MemoryProbe
 import dev.lumen.core.quota.QuotaWatchdog
+import dev.lumen.core.quota.RamBudget
 import dev.lumen.core.quota.ThermalGovernor
 import dev.lumen.core.quota.ThermalProbe
 import dev.lumen.core.quota.ThermalReading
@@ -48,6 +51,8 @@ import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.idle.IdleWindow
+
+private const val TAG = "LumenAgentFacade"
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -717,9 +722,7 @@ public class AgentRuntimeFacade(
         )
     }
 
-    public companion object {
-        private const val TAG = "LumenAgentFacade"
-
+    companion object {
         private const val APPROVAL_POLL_MS = 100L
 
         /** What the console is told when a run arrives with no brain to plan with. */
