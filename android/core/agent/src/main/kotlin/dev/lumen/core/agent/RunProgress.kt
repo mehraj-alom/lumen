@@ -37,7 +37,7 @@ public fun interface RunProgress {
     public fun onStep(step: StepProgress)
 
     /** The step [step] has finished; outcome fields are populated. */
-    public fun onStepOutcome(step: StepProgress) = Unit
+    public fun onStepOutcome(step: StepProgress): Unit = Unit
 
     public companion object {
         /** The progress nobody is watching. */
