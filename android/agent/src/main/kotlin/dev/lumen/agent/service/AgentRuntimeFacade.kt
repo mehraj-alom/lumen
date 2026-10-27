@@ -590,7 +590,6 @@ public class AgentRuntimeFacade(
             ThermalStatus.EMERGENCY -> "EMERGENCY"
             ThermalStatus.SHUTDOWN -> "SHUTDOWN"
         }
-        }
     }
 
     /**
