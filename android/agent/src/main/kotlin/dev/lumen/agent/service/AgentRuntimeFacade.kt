@@ -590,7 +590,6 @@ public class AgentRuntimeFacade(
             ThermalStatus.EMERGENCY -> "EMERGENCY"
             ThermalStatus.SHUTDOWN -> "SHUTDOWN"
         }
-    }
 
     /**
      * Notes that a control request named a run other than the live one.
