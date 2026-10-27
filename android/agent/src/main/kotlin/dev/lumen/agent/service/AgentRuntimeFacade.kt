@@ -51,12 +51,12 @@ import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.idle.IdleWindow
-
-private const val TAG = "LumenAgentFacade"
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+
+private const val TAG = "LumenAgentFacade"
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
