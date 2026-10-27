@@ -111,7 +111,7 @@ public class CloudBrain(
 
     override suspend fun critique(request: CritiqueRequest): Critique {
         val prompt = critiquePrompt(request)
-        val reply = call(prompt, "Judge the step. Reply with the critique envelope.")
+        val (reply, _) = call(prompt, "Judge the step. Reply with the critique envelope.")
         return parseCritique(reply)
     }
 
