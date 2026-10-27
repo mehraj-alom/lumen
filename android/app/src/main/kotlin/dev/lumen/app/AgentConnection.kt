@@ -23,6 +23,7 @@ import dev.lumen.agent.ipc.StepEventPayload
 import dev.lumen.agent.service.AgentRuntimeService
 import dev.lumen.app.ui.ApprovalCard
 import dev.lumen.app.ui.ConsoleState
+import dev.lumen.app.ui.PlanNode
 import dev.lumen.app.ui.SettingsState
 import dev.lumen.app.ui.TraceLine
 import dev.lumen.core.model.UlidGenerator
