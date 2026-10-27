@@ -42,6 +42,7 @@ import dev.lumen.core.quota.BatteryProbe
 import dev.lumen.core.quota.QuotaWatchdog
 import dev.lumen.core.quota.ThermalGovernor
 import dev.lumen.core.quota.ThermalProbe
+import dev.lumen.core.quota.ThermalReading
 import dev.lumen.core.quota.ThermalStatus
 import dev.lumen.core.sandbox.StorageQuota
 import dev.lumen.core.store.RoomStateStore
