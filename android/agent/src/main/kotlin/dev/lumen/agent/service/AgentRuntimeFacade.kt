@@ -55,10 +55,10 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-
-private const val TAG = "LumenAgentFacade"
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val TAG = "LumenAgentFacade"
 
 /**
  * The wiring between the service and the agent.
