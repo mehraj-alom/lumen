@@ -1,6 +1,7 @@
 package dev.lumen.agent
 
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.PowerManager
@@ -40,6 +41,7 @@ import dev.lumen.core.store.DatabaseKeyProvider
 import dev.lumen.core.store.FileLedgerSink
 import dev.lumen.core.store.LumenDatabase
 import dev.lumen.core.store.RoomStateStore
+import dev.lumen.agent.service.FramePipeline
 import dev.lumen.platform.accessibility.AccessibilityBridgeClient
 import dev.lumen.platform.accessibility.UiEventTracker
 import dev.lumen.platform.idle.IdleGate
@@ -151,14 +153,16 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
     /** Reads the device's battery state from the platform. */
     public fun batteryProbe(): BatteryProbe = BatteryProbe {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val intent = context.registerReceiver(null, filter) ?: return BatteryReading(0, false)
-        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-            status == BatteryManager.BATTERY_STATUS_FULL
-        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
-        val percent = if (level >= 0 && scale > 0) level * 100 / scale else 0
-        BatteryReading(levelPercent = percent, isCharging = isCharging)
+        val intent = context.registerReceiver(null, filter)
+        if (intent == null) BatteryReading(0, false) else {
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+            val percent = if (level >= 0 && scale > 0) level * 100 / scale else 0
+            BatteryReading(levelPercent = percent, isCharging = isCharging)
+        }
     }
 
     /** The thermal governor: slows the agent when the device is hot. */

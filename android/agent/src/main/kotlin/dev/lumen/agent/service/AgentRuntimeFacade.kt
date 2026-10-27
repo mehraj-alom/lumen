@@ -174,7 +174,6 @@ public class AgentRuntimeFacade(
         runCostMicros = 0L
         val goal = Payloads.goal(payload)
         val config = Payloads.brainConfig(payload)
-        val modelId = config.modelId
         publish(
             RunState(
                 runId = payload.runId,
@@ -270,7 +269,7 @@ public class AgentRuntimeFacade(
             },
             onBrainReply = { reply ->
                 val cost = priceTable.costMicros(
-                    modelId = modelId,
+                    modelId = config.modelId,
                     promptTokens = reply.promptTokens,
                     completionTokens = reply.completionTokens,
                 )
