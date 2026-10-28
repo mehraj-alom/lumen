@@ -188,8 +188,13 @@ public class AgentRuntimeFacade(
                         is dev.lumen.core.agent.RunOutcome.Failed -> IndicatorState.ERROR
                         else -> IndicatorState.IDLE
                     },
-                    currentReason = outcomeReason(outcome),
-                    stepCount = outcomeSteps(outcome),
+                    currentReason = when (outcome) {
+                        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
+                        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
+                        is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
+                        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
+                    },
+                    stepCount = outcome.stepsExecuted,
                 ),
             )
         }
@@ -381,22 +386,6 @@ public class AgentRuntimeFacade(
         allowedPackages = constraints.allowedPackages,
     )
 
-    /** What the run has to say for itself, in the console's words. */
-    private fun outcomeReason(outcome: dev.lumen.core.agent.RunOutcome): String = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
-        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
-        is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
-        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
-    }
-
-    /** How many steps the run took. */
-    private fun outcomeSteps(outcome: dev.lumen.core.agent.RunOutcome): Int = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
-    }
-
     /**
      * Pauses a run.
      *
@@ -572,21 +561,21 @@ public class AgentRuntimeFacade(
      */
     /** How long the live run has been going. */
     private val elapsedMs: Long
-        get() =
-            if (runStartedAtMs == 0L) 0L
-            else ((if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()) - runStartedAtMs)
-                .coerceAtLeast(0L)
+    get() {
+        if (runStartedAtMs == 0L) return 0L
+        val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
+        return (now - runStartedAtMs).coerceAtLeast(0L)
+    }
 
-    private fun thermalStatus(reading: ThermalReading): String =
-        when (reading.status) {
-            ThermalStatus.NONE -> "NONE"
-            ThermalStatus.LIGHT -> "LIGHT"
-            ThermalStatus.MODERATE -> "MODERATE"
-            ThermalStatus.SEVERE -> "SEVERE"
-            ThermalStatus.CRITICAL -> "CRITICAL"
-            ThermalStatus.EMERGENCY -> "EMERGENCY"
-            ThermalStatus.SHUTDOWN -> "SHUTDOWN"
-        }
+    private fun thermalStatus(reading: ThermalReading): String = when (reading.status) {
+        ThermalStatus.NONE -> "NONE"
+        ThermalStatus.LIGHT -> "LIGHT"
+        ThermalStatus.MODERATE -> "MODERATE"
+        ThermalStatus.SEVERE -> "SEVERE"
+        ThermalStatus.CRITICAL -> "CRITICAL"
+        ThermalStatus.EMERGENCY -> "EMERGENCY"
+        ThermalStatus.SHUTDOWN -> "SHUTDOWN"
+    }
 
     /**
      * Notes that a control request named a run other than the live one.
