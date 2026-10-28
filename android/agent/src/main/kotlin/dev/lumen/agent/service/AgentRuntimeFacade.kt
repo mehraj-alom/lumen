@@ -186,16 +186,30 @@ public class AgentRuntimeFacade(
                 phase = phaseForOutcome(outcome),
                 indicatorState = if (outcome is dev.lumen.core.agent.RunOutcome.Failed) dev.lumen.core.agent.IndicatorState.ERROR else dev.lumen.core.agent.IndicatorState.IDLE,
                 currentReason = currentReasonForOutcome(outcome),
-                stepCount = outcome.stepsExecuted,
+                stepCount = stepsExecutedForOutcome(outcome),
             ),
         )
     }
 
-    private fun phaseForOutcome(outcome: dev.lumen.core.agent.RunOutcome): dev.lumen.core.agent.Phase = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> dev.lumen.core.agent.Phase.DONE
-        is dev.lumen.core.agent.RunOutcome.Failed -> dev.lumen.core.agent.Phase.FAILED
-        is dev.lumen.core.agent.RunOutcome.Aborted -> dev.lumen.core.agent.Phase.ABORTED
-        is dev.lumen.core.agent.RunOutcome.Paused -> dev.lumen.core.agent.Phase.PAUSED
+    private fun stepsExecutedForOutcome(outcome: dev.lumen.core.agent.RunOutcome): Int = when (outcome) {
+        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
+    }
+
+    private fun phaseForOutcome(outcome: dev.lumen.core.agent.RunOutcome): Phase = when (outcome) {
+        is dev.lumen.core.agent.RunOutcome.Completed -> Phase.DONE
+        is dev.lumen.core.agent.RunOutcome.Failed -> Phase.FAILED
+        is dev.lumen.core.agent.RunOutcome.Aborted -> Phase.ABORTED
+        is dev.lumen.core.agent.RunOutcome.Paused -> Phase.PAUSED
+    }
+
+    private fun currentReasonForOutcome(outcome: dev.lumen.core.agent.RunOutcome): String = when (outcome) {
+        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
+        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
+        is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
+        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
     }
 
     private fun publishPlanningState(goal: Goal) {
