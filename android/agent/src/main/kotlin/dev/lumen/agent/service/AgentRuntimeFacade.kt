@@ -184,18 +184,16 @@ public class AgentRuntimeFacade(
         publish(
             state.copy(
                 phase = phaseForOutcome(outcome),
-                indicatorState = if (outcome is dev.lumen.core.agent.RunOutcome.Failed) dev.lumen.core.agent.IndicatorState.ERROR else dev.lumen.core.agent.IndicatorState.IDLE,
+                indicatorState = if (outcome is dev.lumen.core.agent.RunOutcome.Failed) IndicatorState.ERROR else IndicatorState.IDLE,
                 currentReason = currentReasonForOutcome(outcome),
-                stepCount = stepsExecutedForOutcome(outcome),
+                stepCount = when (outcome) {
+                    is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
+                    is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
+                    is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
+                    is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
+                },
             ),
         )
-    }
-
-    private fun stepsExecutedForOutcome(outcome: dev.lumen.core.agent.RunOutcome): Int = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
     }
 
     private fun phaseForOutcome(outcome: dev.lumen.core.agent.RunOutcome): Phase = when (outcome) {
