@@ -165,7 +165,10 @@ public class AgentRuntimeFacade(
         val config = Payloads.brainConfig(payload)
         publishPlanningState(goal)
 
-        if (!checkBrainConfigured(config)) return
+        if (!config.isUsable) {
+            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
+            return
+        }
 
         if (!checkBattery()) return
 
@@ -196,7 +199,12 @@ public class AgentRuntimeFacade(
                     is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
                     is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
                 },
-                stepCount = outcomeSteps(outcome),
+                    stepCount = when (outcome) {
+                        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
+                        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
+                        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
+                        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
+                    },
             ),
         )
     }
@@ -229,14 +237,6 @@ public class AgentRuntimeFacade(
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
             publishFailure(battery.reason, ErrorCode.INVALID_STATE)
-            return false
-        }
-        return true
-    }
-
-    private fun checkBrainConfigured(config: BrainConfig): Boolean {
-        if (!config.isUsable) {
-            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
             return false
         }
         return true
@@ -394,14 +394,6 @@ public class AgentRuntimeFacade(
         costLimitMicros = constraints.costLimitMicros,
         allowedPackages = constraints.allowedPackages,
     )
-
-    /** How many steps the run took. */
-    private fun outcomeSteps(outcome: dev.lumen.core.agent.RunOutcome): Int = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
-        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
-    }
 
     /**
      * Pauses a run.
