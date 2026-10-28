@@ -74,6 +74,10 @@ public object SurfaceSelection {
      * named that app, so its refusal is the more specific reason.
      */
     private fun denialFor(request: SurfaceRequest): String? {
+        // An empty allowlist means every package is permitted: the user has
+        // not restricted the agent to any specific apps.
+        if (request.allowlist.isEmpty()) return null
+
         if (request.packageName !in request.allowlist) {
             return "the package ${request.packageName} is not on the allowlist"
         }

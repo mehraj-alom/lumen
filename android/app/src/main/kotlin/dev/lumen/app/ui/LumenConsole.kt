@@ -180,7 +180,7 @@ private fun GoalControl(
                 androidx.compose.material3.OutlinedTextField(
                     value = allowedPackages,
                     onValueChange = onAllowedPackagesChange,
-                    label = { Text("Allowed packages (comma-separated, optional)") },
+                    label = { Text("Allowed packages (comma-separated, leave empty to allow all)") },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                 )

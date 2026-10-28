@@ -56,7 +56,7 @@ public data class ActionResult(
  */
 public class PackageAllowlist(private val allowed: Set<String> = emptySet()) {
     /** Whether [packageName] may be acted on. */
-    public fun allows(packageName: String): Boolean = allowed.contains(packageName)
+    public fun allows(packageName: String): Boolean = allowed.isEmpty() || allowed.contains(packageName)
 
     /** The allowlist as a set. */
     public fun packages(): Set<String> = allowed.toSet()
