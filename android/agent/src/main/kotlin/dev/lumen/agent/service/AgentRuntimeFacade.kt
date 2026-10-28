@@ -165,10 +165,7 @@ public class AgentRuntimeFacade(
         val config = Payloads.brainConfig(payload)
         publishPlanningState(goal)
 
-        if (!config.isUsable) {
-            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
-            return
-        }
+        if (!checkBrainConfigured(config)) return
 
         if (!checkBattery()) return
 
@@ -228,6 +225,14 @@ public class AgentRuntimeFacade(
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
             publishFailure(battery.reason, ErrorCode.INVALID_STATE)
+            return false
+        }
+        return true
+    }
+
+    private fun checkBrainConfigured(config: BrainConfig): Boolean {
+        if (!config.isUsable) {
+            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
             return false
         }
         return true
@@ -569,11 +574,11 @@ public class AgentRuntimeFacade(
      */
     /** How long the live run has been going. */
     private val elapsedMs: Long
-    get() {
-        if (runStartedAtMs == 0L) return 0L
-        val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
-        return (now - runStartedAtMs).coerceAtLeast(0L)
-    }
+        get() {
+            if (runStartedAtMs == 0L) return 0L
+            val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
+            return (now - runStartedAtMs).coerceAtLeast(0L)
+        }
 
     private fun thermalStatus(reading: ThermalReading): String = when (reading.status) {
         ThermalStatus.NONE -> "NONE"
