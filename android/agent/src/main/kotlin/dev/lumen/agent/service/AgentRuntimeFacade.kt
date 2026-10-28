@@ -172,29 +172,33 @@ public class AgentRuntimeFacade(
         abort.reset()
 
         scope.launch {
-            val outcome = execute(goal, config)
-            publish(
-                state.copy(
-                    phase = when (outcome) {
-                        is dev.lumen.core.agent.RunOutcome.Completed -> Phase.DONE
-                        is dev.lumen.core.agent.RunOutcome.Failed -> Phase.FAILED
-                        is dev.lumen.core.agent.RunOutcome.Aborted -> Phase.ABORTED
-                        is dev.lumen.core.agent.RunOutcome.Paused -> Phase.PAUSED
-                    },
-                    indicatorState = when (outcome) {
-                        is dev.lumen.core.agent.RunOutcome.Failed -> IndicatorState.ERROR
-                        else -> IndicatorState.IDLE
-                    },
-                    currentReason = when (outcome) {
-                        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
-                        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
-                        is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
-                        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
-                    },
-                    stepCount = outcomeSteps(outcome),
-                ),
-            )
+            runAgent(goal, config)
         }
+    }
+
+    private suspend fun runAgent(goal: Goal, config: BrainConfig) {
+        val outcome = execute(goal, config)
+        publish(
+            state.copy(
+                phase = when (outcome) {
+                    is dev.lumen.core.agent.RunOutcome.Completed -> Phase.DONE
+                    is dev.lumen.core.agent.RunOutcome.Failed -> Phase.FAILED
+                    is dev.lumen.core.agent.RunOutcome.Aborted -> Phase.ABORTED
+                    is dev.lumen.core.agent.RunOutcome.Paused -> Phase.PAUSED
+                },
+                indicatorState = when (outcome) {
+                    is dev.lumen.core.agent.RunOutcome.Failed -> IndicatorState.ERROR
+                    else -> IndicatorState.IDLE
+                },
+                currentReason = when (outcome) {
+                    is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
+                    is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
+                    is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
+                    is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
+                },
+                stepCount = outcomeSteps(outcome),
+            ),
+        )
     }
 
     private fun publishPlanningState(goal: Goal) {
