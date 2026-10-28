@@ -91,63 +91,54 @@ public class AgentRuntime(
      * the loop advances with the state this call mutated.
      */
     private suspend fun advance(state: RunState): RunOutcome? {
-        var result: RunOutcome? = null
+        if (abort.isAborted) return RunOutcome.Aborted(state.stepsExecuted)
 
-        if (abort.isAborted) {
-            result = RunOutcome.Aborted(state.stepsExecuted)
-        } else {
-            thermalCheck()?.let { result = RunOutcome.Failed(it, state.stepsExecuted) }
+        thermalCheck()?.let { return RunOutcome.Failed(it, state.stepsExecuted) }
+        checkBudget(state.startedAt, state.stepsExecuted)?.let { return it }
 
-            if (result == null) {
-                checkBudget(state.startedAt, state.stepsExecuted)?.let { result = it }
+        val step = nextStep(state.plan)
+        if (step == null) return idleAdvance(state)
+
+        report(state, step)
+        return executeStepResult(state, step)
+    }
+
+    private suspend fun executeStepResult(state: RunState, step: Step): RunOutcome? {
+        return when (val stepResult = executeStep(state.goal, state.plan, step, state.observation)) {
+            is StepResult.Completed -> {
+                state.stepsExecuted++
+                state.observation = stepResult.observation
+                state.plan = stepResult.plan
+                reportOutcome(state, step, stepResult)
+                null
             }
 
-            if (result == null) {
-                val step = nextStep(state.plan)
-                if (step == null) {
-                    result = idleAdvance(state)
+            is StepResult.Finished -> {
+                state.stepsExecuted++
+                reportOutcome(state, step, stepResult)
+                RunOutcome.Completed(stepResult.summary, state.stepsExecuted)
+            }
+
+            is StepResult.NeedsReplan -> {
+                state.stepsExecuted++
+                state.observation = stepResult.observation
+                reportOutcome(state, step, stepResult)
+                if (state.replans >= config.maxReplans) {
+                    RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
                 } else {
-                    report(state, step)
-                    result = when (val stepResult = executeStep(state.goal, state.plan, step, state.observation)) {
-                        is StepResult.Completed -> {
-                            state.stepsExecuted++
-                            state.observation = stepResult.observation
-                            state.plan = stepResult.plan
-                            reportOutcome(state, step, stepResult)
-                            null
-                        }
-
-                        is StepResult.Finished -> {
-                            state.stepsExecuted++
-                            reportOutcome(state, step, stepResult)
-                            RunOutcome.Completed(stepResult.summary, state.stepsExecuted)
-                        }
-
-                        is StepResult.NeedsReplan -> {
-                            state.stepsExecuted++
-                            state.observation = stepResult.observation
-                            reportOutcome(state, step, stepResult)
-                            if (state.replans >= config.maxReplans) {
-                                RunOutcome.Failed("the step could not be recovered from", state.stepsExecuted)
-                            } else {
-                                state.replans++
-                                state.plan = revisePlan(state.goal, state.plan, failed = step, observation = stepResult.observation)
-                                null
-                            }
-                        }
-
-                        is StepResult.Failed -> {
-                            reportOutcome(state, step, stepResult)
-                            RunOutcome.Failed(stepResult.reason, state.stepsExecuted)
-                        }
-
-                        StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
-                    }
+                    state.replans++
+                    state.plan = revisePlan(state.goal, state.plan, failed = step, observation = stepResult.observation)
+                    null
                 }
             }
-        }
 
-        return result
+            is StepResult.Failed -> {
+                reportOutcome(state, step, stepResult)
+                RunOutcome.Failed(stepResult.reason, state.stepsExecuted)
+            }
+
+            StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
+        }
     }
 
     /**

@@ -39,7 +39,6 @@ import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.quota.BatteryDecision
 import dev.lumen.core.quota.BatteryGovernor
 import dev.lumen.core.quota.BatteryProbe
-import dev.lumen.core.quota.BatteryReading
 import dev.lumen.core.quota.MemoryProbe
 import dev.lumen.core.quota.QuotaWatchdog
 import dev.lumen.core.quota.RamBudget
@@ -169,13 +168,13 @@ public class AgentRuntimeFacade(
         publishPlanningState(goal)
 
         if (!config.isUsable) {
-            publishBrainUnavailable()
+            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
             return
         }
 
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
-            publishBatterySuspended(battery.reason)
+            publishFailure(battery.reason, ErrorCode.INVALID_STATE)
             return
         }
 
@@ -230,24 +229,13 @@ public class AgentRuntimeFacade(
         )
     }
 
-    private fun publishBrainUnavailable() {
-        publish(
-            state.copy(
-                phase = Phase.FAILED,
-                indicatorState = IndicatorState.ERROR,
-                currentReason = NO_BRAIN_MESSAGE,
-                lastError = ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = NO_BRAIN_MESSAGE),
-            ),
-        )
-    }
-
-    private fun publishBatterySuspended(reason: String) {
+    private fun publishFailure(reason: String, code: ErrorCode) {
         publish(
             state.copy(
                 phase = Phase.FAILED,
                 indicatorState = IndicatorState.ERROR,
                 currentReason = reason,
-                lastError = ApiError(code = ErrorCode.INVALID_STATE, message = reason),
+                lastError = ApiError(code = code, message = reason),
             ),
         )
     }
@@ -564,7 +552,7 @@ public class AgentRuntimeFacade(
             stepsUsed = state.stepIndex,
             stepsSoftLimit = 150,
             stepsHardLimit = 400,
-            elapsedMs = elapsedMs(),
+            elapsedMs = elapsedMs,
             wallClockLimitMs = 45L * 60L * 1000L,
             costMicros = runCostMicros,
             costLimitMicros = 0L,
@@ -579,11 +567,13 @@ public class AgentRuntimeFacade(
      * A terminal phase stops the clock at the moment the run got there, so a
      * finished run reports its own duration instead of the time since it ended.
      */
-    private fun elapsedMs(): Long {
-        if (runStartedAtMs == 0L) return 0L
-        val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
-        return (now - runStartedAtMs).coerceAtLeast(0L)
-    }
+    /** How long the live run has been going. */
+    private val elapsedMs: Long
+        get() {
+            if (runStartedAtMs == 0L) return 0L
+            val now = if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()
+            return (now - runStartedAtMs).coerceAtLeast(0L)
+        }
 
     private fun thermalStatus(reading: ThermalReading): String =
         when (reading.status) {

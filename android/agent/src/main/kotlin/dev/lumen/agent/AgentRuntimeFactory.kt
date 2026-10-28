@@ -154,8 +154,8 @@ public class AgentRuntimeFactory(private val context: Context, private val clock
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val intent = context.registerReceiver(null, filter)
         if (intent == null) {
-        BatteryReading(0, false)
-    } else {
+            BatteryReading(0, false)
+        } else {
             val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL
