@@ -152,7 +152,6 @@ public class AgentRuntime(
 
             StepResult.Aborted -> RunOutcome.Aborted(state.stepsExecuted)
         }
-    }
 
     /**
      * Tells the watcher how a step finished, so the console's step event carries
