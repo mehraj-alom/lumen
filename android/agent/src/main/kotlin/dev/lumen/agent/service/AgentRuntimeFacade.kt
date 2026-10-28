@@ -39,9 +39,7 @@ import dev.lumen.core.policy.PolicyEngine
 import dev.lumen.core.quota.BatteryDecision
 import dev.lumen.core.quota.BatteryGovernor
 import dev.lumen.core.quota.BatteryProbe
-import dev.lumen.core.quota.MemoryProbe
 import dev.lumen.core.quota.QuotaWatchdog
-import dev.lumen.core.quota.RamBudget
 import dev.lumen.core.quota.ThermalGovernor
 import dev.lumen.core.quota.ThermalProbe
 import dev.lumen.core.quota.ThermalReading
@@ -156,7 +154,17 @@ public class AgentRuntimeFacade(
      * reason, rather than starting and dying on the first step.
      */
     public fun startGoal(payload: GoalPayload) {
-        if (!refuseSecondRun(payload)) return
+        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
+        if (liveBefore && payload.runId != currentRunId) {
+            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
+            publish(
+                state.copy(
+                    currentReason = ONE_RUN_MESSAGE,
+                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
+                ),
+            )
+            return
+        }
 
         currentRunId = payload.runId
         takeoverActive = false
@@ -199,21 +207,6 @@ public class AgentRuntimeFacade(
                 ),
             )
         }
-    }
-
-    private fun refuseSecondRun(payload: GoalPayload): Boolean {
-        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
-        if (liveBefore && payload.runId != currentRunId) {
-            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
-            publish(
-                state.copy(
-                    currentReason = ONE_RUN_MESSAGE,
-                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
-                ),
-            )
-            return false
-        }
-        return true
     }
 
     private fun publishPlanningState(goal: Goal) {
@@ -575,8 +568,8 @@ public class AgentRuntimeFacade(
             return (now - runStartedAtMs).coerceAtLeast(0L)
         }
 
-    private fun thermalStatus(reading: ThermalReading): String =
-        when (reading.status) {
+    private fun thermalStatus(reading: ThermalReading): String {
+        return when (reading.status) {
             ThermalStatus.NONE -> "NONE"
             ThermalStatus.LIGHT -> "LIGHT"
             ThermalStatus.MODERATE -> "MODERATE"
@@ -585,6 +578,7 @@ public class AgentRuntimeFacade(
             ThermalStatus.EMERGENCY -> "EMERGENCY"
             ThermalStatus.SHUTDOWN -> "SHUTDOWN"
         }
+    }
 
     /**
      * Notes that a control request named a run other than the live one.

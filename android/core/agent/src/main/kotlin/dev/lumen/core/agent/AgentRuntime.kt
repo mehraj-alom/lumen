@@ -91,20 +91,33 @@ public class AgentRuntime(
      * the loop advances with the state this call mutated.
      */
     private suspend fun advance(state: RunState): RunOutcome? {
-        if (abort.isAborted) return RunOutcome.Aborted(state.stepsExecuted)
+        var result: RunOutcome? = null
 
-        thermalCheck()?.let { return RunOutcome.Failed(it, state.stepsExecuted) }
-        checkBudget(state.startedAt, state.stepsExecuted)?.let { return it }
+        if (abort.isAborted) {
+            result = RunOutcome.Aborted(state.stepsExecuted)
+        } else {
+            thermalCheck()?.let { result = RunOutcome.Failed(it, state.stepsExecuted) }
 
-        val step = nextStep(state.plan)
-        if (step == null) return idleAdvance(state)
+            if (result == null) {
+                checkBudget(state.startedAt, state.stepsExecuted)?.let { result = it }
+            }
 
-        report(state, step)
-        return executeStepResult(state, step)
+            if (result == null) {
+                val step = nextStep(state.plan)
+                if (step == null) {
+                    result = idleAdvance(state)
+                } else {
+                    report(state, step)
+                    result = executeStepResult(state, step)
+                }
+            }
+        }
+
+        return result
     }
 
-    private suspend fun executeStepResult(state: RunState, step: Step): RunOutcome? {
-        return when (val stepResult = executeStep(state.goal, state.plan, step, state.observation)) {
+    private suspend fun executeStepResult(state: RunState, step: Step): RunOutcome? =
+        when (val stepResult = executeStep(state.goal, state.plan, step, state.observation)) {
             is StepResult.Completed -> {
                 state.stepsExecuted++
                 state.observation = stepResult.observation
