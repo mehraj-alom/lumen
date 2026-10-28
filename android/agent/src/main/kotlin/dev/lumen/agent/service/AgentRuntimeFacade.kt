@@ -175,13 +175,27 @@ public class AgentRuntimeFacade(
         )
 
         if (!config.isUsable) {
-            publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
+            publish(
+                state.copy(
+                    phase = Phase.FAILED,
+                    indicatorState = IndicatorState.ERROR,
+                    currentReason = NO_BRAIN_MESSAGE,
+                    lastError = ApiError(code = ErrorCode.BRAIN_UNAVAILABLE, message = NO_BRAIN_MESSAGE),
+                ),
+            )
             return
         }
 
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
-            publishFailure(battery.reason, ErrorCode.INVALID_STATE)
+            publish(
+                state.copy(
+                    phase = Phase.FAILED,
+                    indicatorState = IndicatorState.ERROR,
+                    currentReason = battery.reason,
+                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = battery.reason),
+                ),
+            )
             return
         }
 
@@ -221,17 +235,6 @@ public class AgentRuntimeFacade(
         is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
         is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
         is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
-    }
-
-    private fun publishFailure(reason: String, code: ErrorCode) {
-        publish(
-            state.copy(
-                phase = Phase.FAILED,
-                indicatorState = IndicatorState.ERROR,
-                currentReason = reason,
-                lastError = ApiError(code = code, message = reason),
-            ),
-        )
     }
 
     private fun checkNotAlreadyRunning(payload: GoalPayload): Boolean {
