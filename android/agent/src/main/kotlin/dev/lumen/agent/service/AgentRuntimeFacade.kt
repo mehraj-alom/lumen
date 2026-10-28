@@ -194,7 +194,7 @@ public class AgentRuntimeFacade(
                         is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
                         is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
                     },
-                    stepCount = outcome.stepsExecuted,
+                    stepCount = outcomeSteps(outcome),
                 ),
             )
         }
@@ -385,6 +385,14 @@ public class AgentRuntimeFacade(
         costLimitMicros = constraints.costLimitMicros,
         allowedPackages = constraints.allowedPackages,
     )
+
+    /** How many steps the run took. */
+    private fun outcomeSteps(outcome: dev.lumen.core.agent.RunOutcome): Int = when (outcome) {
+        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Aborted -> outcome.stepsExecuted
+        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.stepsExecuted
+    }
 
     /**
      * Pauses a run.
