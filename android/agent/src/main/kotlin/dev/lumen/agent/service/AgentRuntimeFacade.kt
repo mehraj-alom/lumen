@@ -163,14 +163,27 @@ public class AgentRuntimeFacade(
         runCostMicros = 0L
         val goal = Payloads.goal(payload)
         val config = Payloads.brainConfig(payload)
-        publishPlanningState(goal)
+        publish(
+            RunState(
+                runId = goal.id.value,
+                phase = Phase.PLANNING,
+                currentIntent = goal.text,
+                indicatorState = IndicatorState.WORKING,
+                indicatorMode = preferredIndicatorMode,
+                brainRoute = goal.constraints.brainPin.name,
+            ),
+        )
 
         if (!config.isUsable) {
             publishFailure(NO_BRAIN_MESSAGE, ErrorCode.BRAIN_UNAVAILABLE)
             return
         }
 
-        if (!checkBattery()) return
+        val battery = batteryGovernor.decide(batteryProbe.read())
+        if (battery is BatteryDecision.Suspend) {
+            publishFailure(battery.reason, ErrorCode.INVALID_STATE)
+            return
+        }
 
         abort.reset()
 
@@ -210,19 +223,6 @@ public class AgentRuntimeFacade(
         is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
     }
 
-    private fun publishPlanningState(goal: Goal) {
-        publish(
-            RunState(
-                runId = goal.id.value,
-                phase = Phase.PLANNING,
-                currentIntent = goal.text,
-                indicatorState = IndicatorState.WORKING,
-                indicatorMode = preferredIndicatorMode,
-                brainRoute = goal.constraints.brainPin.name,
-            ),
-        )
-    }
-
     private fun publishFailure(reason: String, code: ErrorCode) {
         publish(
             state.copy(
@@ -232,15 +232,6 @@ public class AgentRuntimeFacade(
                 lastError = ApiError(code = code, message = reason),
             ),
         )
-    }
-
-    private fun checkBattery(): Boolean {
-        val battery = batteryGovernor.decide(batteryProbe.read())
-        if (battery is BatteryDecision.Suspend) {
-            publishFailure(battery.reason, ErrorCode.INVALID_STATE)
-            return false
-        }
-        return true
     }
 
     private fun checkNotAlreadyRunning(payload: GoalPayload): Boolean {
