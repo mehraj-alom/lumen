@@ -184,7 +184,7 @@ public class AgentRuntimeFacade(
         publish(
             state.copy(
                 phase = phaseForOutcome(outcome),
-                indicatorState = indicatorStateForOutcome(outcome),
+                indicatorState = if (outcome is dev.lumen.core.agent.RunOutcome.Failed) dev.lumen.core.agent.IndicatorState.ERROR else dev.lumen.core.agent.IndicatorState.IDLE,
                 currentReason = currentReasonForOutcome(outcome),
                 stepCount = outcome.stepsExecuted,
             ),
@@ -196,18 +196,6 @@ public class AgentRuntimeFacade(
         is dev.lumen.core.agent.RunOutcome.Failed -> dev.lumen.core.agent.Phase.FAILED
         is dev.lumen.core.agent.RunOutcome.Aborted -> dev.lumen.core.agent.Phase.ABORTED
         is dev.lumen.core.agent.RunOutcome.Paused -> dev.lumen.core.agent.Phase.PAUSED
-    }
-
-    private fun indicatorStateForOutcome(outcome: dev.lumen.core.agent.RunOutcome): dev.lumen.core.agent.IndicatorState = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Failed -> dev.lumen.core.agent.IndicatorState.ERROR
-        else -> dev.lumen.core.agent.IndicatorState.IDLE
-    }
-
-    private fun currentReasonForOutcome(outcome: dev.lumen.core.agent.RunOutcome): String = when (outcome) {
-        is dev.lumen.core.agent.RunOutcome.Completed -> outcome.summary
-        is dev.lumen.core.agent.RunOutcome.Failed -> outcome.reason
-        is dev.lumen.core.agent.RunOutcome.Aborted -> "stopped after ${outcome.stepsExecuted} steps"
-        is dev.lumen.core.agent.RunOutcome.Paused -> outcome.reason
     }
 
     private fun publishPlanningState(goal: Goal) {
