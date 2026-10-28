@@ -281,7 +281,7 @@ public class AgentRuntimeFacade(
                     if (step.stepId != null) {
                         service?.publishEvent(
                             type = "step.${step.intent.lowercase().replace(" ", "_")}",
-                            runId = current.runId,
+                            runId = state.runId,
                             stepId = step.stepId,
                             intent = step.intent,
                             riskClass = step.riskClass,
@@ -301,7 +301,7 @@ public class AgentRuntimeFacade(
                                 Log.w(TAG, "the captured frame could not be read", error)
                                 return@launch
                             }
-                            val runId = dev.lumen.core.model.RunId(current.runId)
+                            val runId = dev.lumen.core.model.RunId(state.runId)
                             val stored = framePipeline.store(runId, bytes)
                             if (stored != null) {
                                 service?.publishFrame(stored.toRelativePath(), 0, 0)
