@@ -154,17 +154,7 @@ public class AgentRuntimeFacade(
      * reason, rather than starting and dying on the first step.
      */
     public fun startGoal(payload: GoalPayload) {
-        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
-        if (liveBefore && payload.runId != currentRunId) {
-            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
-            publish(
-                state.copy(
-                    currentReason = ONE_RUN_MESSAGE,
-                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
-                ),
-            )
-            return
-        }
+        if (!checkNotAlreadyRunning(payload)) return
 
         currentRunId = payload.runId
         takeoverActive = false
@@ -233,6 +223,21 @@ public class AgentRuntimeFacade(
         val battery = batteryGovernor.decide(batteryProbe.read())
         if (battery is BatteryDecision.Suspend) {
             publishFailure(battery.reason, ErrorCode.INVALID_STATE)
+            return false
+        }
+        return true
+    }
+
+    private fun checkNotAlreadyRunning(payload: GoalPayload): Boolean {
+        val liveBefore = state.phase != Phase.IDLE && !state.phase.isTerminal
+        if (liveBefore && payload.runId != currentRunId) {
+            Log.w(TAG, "goal ${payload.runId} refused: run $currentRunId is still live")
+            publish(
+                state.copy(
+                    currentReason = ONE_RUN_MESSAGE,
+                    lastError = ApiError(code = ErrorCode.INVALID_STATE, message = ONE_RUN_MESSAGE),
+                ),
+            )
             return false
         }
         return true
@@ -567,10 +572,13 @@ public class AgentRuntimeFacade(
      */
     /** How long the live run has been going. */
     private val elapsedMs: Long
-        get() = if (runStartedAtMs == 0L) 0L else ((if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()) - runStartedAtMs).coerceAtLeast(0L)
+        get() =
+            if (runStartedAtMs == 0L) 0L
+            else ((if (state.phase.isTerminal) runEndedAtMs else clock.nowMs()) - runStartedAtMs)
+                .coerceAtLeast(0L)
 
-    private fun thermalStatus(reading: ThermalReading): String {
-        return when (reading.status) {
+    private fun thermalStatus(reading: ThermalReading): String =
+        when (reading.status) {
             ThermalStatus.NONE -> "NONE"
             ThermalStatus.LIGHT -> "LIGHT"
             ThermalStatus.MODERATE -> "MODERATE"
@@ -579,7 +587,6 @@ public class AgentRuntimeFacade(
             ThermalStatus.EMERGENCY -> "EMERGENCY"
             ThermalStatus.SHUTDOWN -> "SHUTDOWN"
         }
-    }
 
     /**
      * Notes that a control request named a run other than the live one.
